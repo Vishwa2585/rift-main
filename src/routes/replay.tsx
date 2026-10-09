@@ -68,9 +68,9 @@ function Replay() {
             </GoldButton>
           )}
           <GhostButton onClick={() => { setPos(0); setPlaying(false); }}><RotateCcw className="size-4" /> Restart</GhostButton>
-          <div className="ml-auto flex items-center gap-1 rounded-xl border border-border p-1">
+          <div className="w-full sm:w-auto sm:ml-auto flex items-center justify-end gap-1 rounded-xl border border-border p-1">
             {[0.5, 1, 2, 4].map((s) => (
-              <button key={s} onClick={() => setSpeed(s)} className={cn("rounded-lg px-3 py-1 text-xs", speed === s ? "bg-gold text-gold-foreground" : "text-muted-foreground")}>{s}×</button>
+              <button key={s} onClick={() => setSpeed(s)} className={cn("rounded-lg px-2.5 sm:px-3 py-1 text-xs", speed === s ? "bg-gold text-gold-foreground" : "text-muted-foreground")}>{s}×</button>
             ))}
           </div>
         </div>
@@ -86,15 +86,15 @@ function Replay() {
               key={i}
               onClick={() => { setPos(i); setPlaying(false); }}
               className={cn(
-                "flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-left transition-all",
+                "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 rounded-xl border px-4 py-2.5 text-left transition-all",
                 i === pos ? "border-gold/50 bg-gold/10" : i < pos ? "border-border bg-secondary/30" : "border-border/50 opacity-40",
               )}
             >
               <div className="flex items-center gap-3">
-                <Mono className="text-muted-foreground">T+{e.t}s</Mono>
-                <span className="text-sm text-foreground">{e.label}</span>
+                <Mono className="text-muted-foreground shrink-0">T+{e.t}s</Mono>
+                <span className="text-sm font-medium text-foreground">{e.label}</span>
               </div>
-              <span className="text-xs text-muted-foreground">{e.chain} · {e.detail}</span>
+              <span className="text-xs text-muted-foreground sm:text-right">{e.chain} · {e.detail}</span>
             </button>
           ))}
         </div>

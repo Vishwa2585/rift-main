@@ -81,6 +81,8 @@ export function Intro() {
       }
     };
 
+    const isMobile = window.innerWidth < 768;
+
     let last = performance.now();
     const tick = (now: number) => {
       const dt = Math.min((now - last) / 16.7, 3);
@@ -88,7 +90,7 @@ export function Intro() {
       const W = canvas.width, H = canvas.height;
       ctx.clearRect(0, 0, W, H);
 
-      if (phase === "shower" && !reduced && particles.length < 260) spawn(6);
+      if (phase === "shower" && !reduced && particles.length < (isMobile ? 130 : 260)) spawn(isMobile ? 3 : 6);
       if (phase === "question") particles = particles.filter((p) => p.y < H + 100);
 
       for (const p of particles) {
@@ -148,38 +150,38 @@ export function Intro() {
       {/* vignette */}
       <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.85) 100%)" }} />
 
-      <div className={`relative flex h-full flex-col items-center justify-center px-6 text-center transition-all duration-700 ${phase === "dissolve" ? "scale-110 opacity-0 blur-sm" : "opacity-100"}`}>
+      <div className={`relative flex h-full flex-col items-center justify-center px-4 sm:px-6 text-center transition-all duration-700 ${phase === "dissolve" ? "scale-110 opacity-0 blur-sm" : "opacity-100"}`}>
         {(phase === "title" || phase === "shower" || phase === "question") && (
           <>
-            <h1 className="font-display text-[clamp(4rem,18vw,14rem)] font-bold leading-none tracking-[0.12em] gold-text animate-float-slow">
+            <h1 className="font-display text-[clamp(3.5rem,18vw,14rem)] font-bold leading-none tracking-[0.12em] gold-text animate-float-slow">
               RIFT
             </h1>
-            <p className="mt-2 text-[clamp(0.65rem,2vw,1.1rem)] font-medium uppercase tracking-[0.5em] text-white/70">
+            <p className="mt-2 text-[clamp(0.65rem,2vw,1.1rem)] font-medium uppercase tracking-[0.35em] sm:tracking-[0.5em] text-white/70">
               Real-Time Interchain Fraud Tracking
             </p>
-            <div className="mx-auto mt-6 h-px w-48 shimmer-line" />
-            <p className="mt-6 text-[clamp(0.7rem,1.6vw,0.95rem)] uppercase tracking-[0.3em] text-white/45">
+            <div className="mx-auto mt-6 h-px w-36 sm:w-48 shimmer-line" />
+            <p className="mt-6 text-[clamp(0.7rem,1.6vw,0.95rem)] uppercase tracking-[0.25em] sm:tracking-[0.3em] text-white/45">
               Every transaction leaves a trace.
             </p>
           </>
         )}
 
         {phase === "question" && (
-          <div className="mt-14 flex flex-col items-center">
-            <p className="min-h-10 font-display text-[clamp(1.4rem,4vw,2.6rem)] font-medium text-white/90">
+          <div className="mt-10 sm:mt-14 flex flex-col items-center w-full max-w-lg">
+            <p className="min-h-10 font-display text-[clamp(1.3rem,4vw,2.6rem)] font-medium text-white/90">
               {typed}
               <span className="animate-pulse text-gold">▍</span>
             </p>
-            <div className={`mt-10 flex flex-col gap-4 sm:flex-row transition-all duration-700 ${typed.length > 10 ? "opacity-100" : "opacity-0"}`}>
+            <div className={`mt-8 sm:mt-10 flex w-full flex-col sm:flex-row gap-3 sm:gap-4 justify-center transition-all duration-700 ${typed.length > 10 ? "opacity-100" : "opacity-0"}`}>
               <button
                 onClick={() => enter("/bank")}
-                className="rounded-2xl border border-gold/60 bg-gold/10 px-10 py-4 font-display text-sm font-semibold uppercase tracking-[0.25em] text-gold backdrop-blur-md transition-all hover:bg-gold hover:text-black"
+                className="w-full sm:w-auto rounded-2xl border border-gold/60 bg-gold/10 px-6 sm:px-10 py-3.5 sm:py-4 font-display text-xs sm:text-sm font-semibold uppercase tracking-[0.25em] text-gold backdrop-blur-md transition-all hover:bg-gold hover:text-black min-h-[46px] flex items-center justify-center"
               >
                 Enter the Vault
               </button>
               <button
                 onClick={() => enter("/command-room")}
-                className="rounded-2xl border border-white/25 bg-white/5 px-10 py-4 font-display text-sm font-semibold uppercase tracking-[0.25em] text-white/85 backdrop-blur-md transition-all hover:border-white/60 hover:bg-white/10"
+                className="w-full sm:w-auto rounded-2xl border border-white/25 bg-white/5 px-6 sm:px-10 py-3.5 sm:py-4 font-display text-xs sm:text-sm font-semibold uppercase tracking-[0.25em] text-white/85 backdrop-blur-md transition-all hover:border-white/60 hover:bg-white/10 min-h-[46px] flex items-center justify-center"
               >
                 Explore the Threats
               </button>
@@ -190,7 +192,7 @@ export function Intro() {
 
       <button
         onClick={dissolve}
-        className="absolute bottom-6 right-6 rounded-full border border-white/20 px-4 py-1.5 text-[11px] uppercase tracking-[0.2em] text-white/50 transition-colors hover:border-gold hover:text-gold"
+        className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 rounded-full border border-white/20 px-3.5 py-1.5 text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-white/60 transition-colors hover:border-gold hover:text-gold min-h-[36px] flex items-center"
       >
         Skip intro
       </button>

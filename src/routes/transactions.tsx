@@ -51,7 +51,7 @@ function Transactions() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="space-y-2 lg:col-span-3">
+        <div className="space-y-2 lg:col-span-3 max-h-[380px] lg:max-h-none overflow-y-auto pr-1">
           {filtered.length === 0 && <EmptyState title="No transfers match" hint="Create a simulated transfer from RIFT Bank." />}
           {filtered.map((t) => {
             const c = CLIENTS.find((x) => x.id === t.clientId);
@@ -90,7 +90,7 @@ function Transactions() {
                 <dt className="text-muted-foreground">Client</dt><dd>{CLIENTS.find((x) => x.id === tx.clientId)?.name}</dd>
                 <dt className="text-muted-foreground">Amount</dt><dd className="font-semibold text-gold">{fmtMoney(tx.amount)} {tx.asset}</dd>
                 <dt className="text-muted-foreground">Stage</dt><dd>{tx.stage.replaceAll("_", " ")}</dd>
-                <dt className="text-muted-foreground">Recipient</dt><dd><Mono>{tx.recipient}</Mono></dd>
+                <dt className="text-muted-foreground">Recipient</dt><dd><Mono className="break-all">{tx.recipient}</Mono></dd>
                 <dt className="text-muted-foreground">Source hash</dt><dd><Mono className="break-all">{tx.sourceHash.slice(0, 30)}… (simulated)</Mono></dd>
                 <dt className="text-muted-foreground">RIFT Key</dt><dd>{tx.nfcVerified ? `Verified · ${tx.nfcPayload}` : "Not verified"}</dd>
                 <dt className="text-muted-foreground">Created</dt><dd>{new Date(tx.createdAt).toLocaleString()}</dd>

@@ -77,7 +77,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" },
+      { name: "theme-color", content: "#0a0a0c" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { title: "RIFT — Real-Time Interchain Fraud Tracking" },
       { name: "description", content: "RIFT: a cinematic real-time interchain fraud-tracking demonstration. Simulated bank, live transfer lifecycle, NFC authorization, and a 3D cross-chain fracture map." },
       { name: "author", content: "RIFT — FUSION 2026" },

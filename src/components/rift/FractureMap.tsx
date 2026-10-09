@@ -200,8 +200,8 @@ export function FractureMap({ height = 460 }: { height?: number }) {
 
   return (
     <div className="relative">
-      <div className="overflow-hidden rounded-2xl border border-border bg-black" style={{ height }}>
-        <Canvas camera={{ position: [0, 1.2, 7.5], fov: 55 }} dpr={[1, 1.75]}>
+      <div className="overflow-hidden rounded-2xl border border-border bg-black h-[320px] sm:h-[420px] lg:h-[500px]">
+        <Canvas camera={{ position: [0, 1.2, 7.5], fov: 55 }} dpr={[1, 1.5]}>
           <color attach="background" args={["#05060a"]} />
           <fog attach="fog" args={["#05060a", 9, 16]} />
           <Suspense fallback={null}>
@@ -211,18 +211,18 @@ export function FractureMap({ height = 460 }: { height?: number }) {
             />
           </Suspense>
         </Canvas>
-        <div className="pointer-events-none absolute left-4 top-4 flex gap-2">
-          <span className="rounded-full border border-gold/40 bg-black/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gold backdrop-blur">Source Chain</span>
-          <span className="rounded-full border border-[#7fa8c9]/40 bg-black/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7fa8c9] backdrop-blur">Destination Chain</span>
+        <div className="pointer-events-none absolute left-3 top-3 sm:left-4 sm:top-4 flex flex-wrap gap-1.5 sm:gap-2">
+          <span className="rounded-full border border-gold/40 bg-black/60 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.18em] text-gold backdrop-blur">Source Chain</span>
+          <span className="rounded-full border border-[#7fa8c9]/40 bg-black/60 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7fa8c9] backdrop-blur">Destination Chain</span>
         </div>
-        <p className="pointer-events-none absolute bottom-3 left-4 text-[10px] text-white/40">Drag to rotate · scroll to zoom · click nodes and paths to inspect</p>
+        <p className="pointer-events-none absolute bottom-2.5 left-3 sm:left-4 text-[9px] sm:text-[10px] text-white/50">Drag to rotate · pinch/scroll to zoom · click nodes to inspect</p>
       </div>
 
       {selection && (
-        <GlassPanel deep className="absolute right-4 top-4 w-72 p-4">
+        <GlassPanel deep className="absolute inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:top-4 sm:w-72 p-3.5 sm:p-4 z-10 shadow-xl">
           <div className="mb-1 flex items-center justify-between">
             <p className="font-display text-sm font-semibold text-foreground">{selection.title}</p>
-            <button onClick={() => setSelection(null)} className="text-muted-foreground hover:text-foreground">✕</button>
+            <button onClick={() => setSelection(null)} className="flex size-6 items-center justify-center text-muted-foreground hover:text-foreground">✕</button>
           </div>
           <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">{selection.body}</p>
           {selection.kind === "node" && state.transfers[0] && (

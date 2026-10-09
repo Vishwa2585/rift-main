@@ -89,14 +89,29 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="absolute inset-0" style={{ background: "radial-gradient(900px 500px at 10% 110%, color-mix(in oklab, var(--color-gold) 5%, transparent), transparent 60%)" }} />
       </div>
 
+      {/* sidebar backdrop for mobile */}
+      {open && (
+        <div
+          className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm transition-opacity lg:hidden"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-background/80 backdrop-blur-xl transition-transform lg:translate-x-0",
-        open ? "translate-x-0" : "-translate-x-full",
+        "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-background/95 backdrop-blur-2xl transition-transform lg:translate-x-0",
+        open ? "translate-x-0 shadow-2xl" : "-translate-x-full",
       )}>
         <div className="flex items-center justify-between px-5 py-5">
-          <Link to="/overview" className="font-display text-2xl font-bold tracking-[0.3em] gold-text">RIFT</Link>
-          <button className="lg:hidden text-muted-foreground" onClick={() => setOpen(false)} aria-label="Close menu"><X className="size-5" /></button>
+          <Link to="/overview" onClick={() => setOpen(false)} className="font-display text-2xl font-bold tracking-[0.3em] gold-text">RIFT</Link>
+          <button
+            className="flex size-9 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground lg:hidden"
+            onClick={() => setOpen(false)}
+            aria-label="Close menu"
+          >
+            <X className="size-5" />
+          </button>
         </div>
         <div className="mx-5 mb-4 shimmer-line" />
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
@@ -138,14 +153,66 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* top bar (mobile) */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur-xl lg:hidden">
-        <button onClick={() => setOpen(true)} aria-label="Open menu" className="text-foreground"><Menu className="size-5" /></button>
-        <span className="font-display text-lg font-bold tracking-[0.3em] gold-text">RIFT</span>
-        <ThemeToggle />
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur-xl lg:hidden">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setOpen(true)}
+            aria-label="Open menu"
+            className="flex size-9 items-center justify-center rounded-xl border border-border bg-secondary/40 text-foreground transition-transform active:scale-95"
+          >
+            <Menu className="size-5" />
+          </button>
+          <Link to="/overview" className="font-display text-lg font-bold tracking-[0.25em] gold-text">
+            RIFT
+          </Link>
+        </div>
+        <div className="flex items-center gap-2">
+          {openIncidents > 0 && (
+            <Link
+              to="/incidents"
+              className="flex items-center gap-1.5 rounded-xl border border-danger/40 bg-danger/15 px-2 py-1 text-xs font-bold text-danger animate-pulse"
+            >
+              <ShieldAlert className="size-3.5" />
+              <span>{openIncidents}</span>
+            </Link>
+          )}
+          <ThemeToggle />
+        </div>
       </header>
 
-      <main className="lg:pl-64">
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
+      {/* mobile bottom navigation bar */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-border bg-background/90 px-1 py-1.5 backdrop-blur-2xl lg:hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {[
+          { to: "/overview", label: "Overview", icon: LayoutDashboard },
+          { to: "/bank", label: "Bank", icon: Landmark },
+          { to: "/command-room", label: "Command", icon: Radar },
+          { to: "/incidents", label: "Incidents", icon: ShieldAlert, badge: openIncidents },
+          { to: "/rift-key", label: "RIFT Key", icon: Nfc },
+        ].map(({ to, label, icon: Icon, badge }) => {
+          const active = location.pathname.startsWith(to);
+          return (
+            <Link
+              key={to}
+              to={to}
+              className={cn(
+                "relative flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-1 text-[10px] font-medium transition-colors",
+                active ? "font-bold text-gold" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="size-4" />
+              <span>{label}</span>
+              {badge !== undefined && badge > 0 ? (
+                <span className="absolute top-0.5 right-3 flex size-4 items-center justify-center rounded-full bg-danger text-[9px] font-bold text-white">
+                  {badge}
+                </span>
+              ) : null}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <main className="lg:pl-64 pb-20 lg:pb-8">
+        <div className="mx-auto max-w-6xl px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
           {/* High Priority Live Alert Banner */}
           {state.activeAlert && (
             <div className="mb-6 animate-pulse rounded-2xl border border-danger/60 bg-danger/15 p-4 shadow-lg shadow-danger/10 backdrop-blur-md">

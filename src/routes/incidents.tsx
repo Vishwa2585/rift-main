@@ -114,7 +114,7 @@ function Incidents() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-12">
           {/* Left Column: Incident List (4 cols) */}
-          <div className="space-y-2.5 lg:col-span-4">
+          <div className="space-y-2.5 lg:col-span-4 max-h-[380px] lg:max-h-none overflow-y-auto pr-1">
             <div className="flex items-center justify-between px-1 pb-1">
               <span className="text-[11px] font-mono uppercase text-muted-foreground">INCIDENT QUEUE ({state.incidents.length})</span>
               <span className="text-[10px] text-muted-foreground">Select to investigate</span>
@@ -287,23 +287,23 @@ function Incidents() {
 
                     {pair?.sourceEvent ? (
                       <div className="mt-3 space-y-2 text-xs">
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Tx Hash:</span>
-                          <Mono className="text-foreground">{pair.sourceEvent.txHash.slice(0, 16)}…</Mono>
+                          <Mono className="text-foreground break-all">{pair.sourceEvent.txHash.slice(0, 16)}…</Mono>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Amount:</span>
                           <span className="font-bold text-foreground">{pair.sourceEvent.amount.toLocaleString()} {pair.sourceEvent.token}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Sender:</span>
-                          <Mono className="text-muted-foreground">{pair.sourceEvent.sender}</Mono>
+                          <Mono className="text-muted-foreground break-all">{pair.sourceEvent.sender}</Mono>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Target Recipient:</span>
-                          <Mono className="text-foreground">{pair.sourceEvent.recipient}</Mono>
+                          <Mono className="text-foreground break-all">{pair.sourceEvent.recipient}</Mono>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Block & Finality:</span>
                           <span className="font-mono text-foreground">Block {pair.sourceEvent.blockNumber} ({pair.sourceEvent.confirmations}/{pair.sourceEvent.requiredConfirmations} conf)</span>
                         </div>
@@ -328,25 +328,25 @@ function Incidents() {
 
                     {pair?.destEvent ? (
                       <div className="mt-3 space-y-2 text-xs">
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Tx Hash:</span>
-                          <Mono className="text-foreground">{pair.destEvent.txHash.slice(0, 16)}…</Mono>
+                          <Mono className="text-foreground break-all">{pair.destEvent.txHash.slice(0, 16)}…</Mono>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Amount:</span>
                           <span className="font-bold text-foreground">{pair.destEvent.amount.toLocaleString()} {pair.destEvent.token}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Observed Recipient:</span>
-                          <Mono className={cn("font-bold", pair.sourceEvent && pair.destEvent.recipient !== pair.sourceEvent.recipient ? "text-danger" : "text-foreground")}>
+                          <Mono className={cn("font-bold break-all", pair.sourceEvent && pair.destEvent.recipient !== pair.sourceEvent.recipient ? "text-danger" : "text-foreground")}>
                             {pair.destEvent.recipient}
                           </Mono>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Token Contract:</span>
-                          <span className="font-mono text-foreground">{pair.destEvent.token}</span>
+                          <span className="font-mono text-foreground break-all">{pair.destEvent.token}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5">
                           <span className="text-muted-foreground">Block Number:</span>
                           <span className="font-mono text-foreground">Block {pair.destEvent.blockNumber}</span>
                         </div>

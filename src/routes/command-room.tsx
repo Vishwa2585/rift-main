@@ -70,14 +70,14 @@ function CommandRoom() {
           </div>
 
           {/* Source Selector */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Source:</span>
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <span className="text-[11px] sm:text-xs text-muted-foreground">Source:</span>
             {(["CONTROLLED DEMO STREAM", "LIVE LOCAL CHAIN", "HISTORICAL REPLAY"] as const).map((source) => (
               <button
                 key={source}
                 onClick={() => dispatch({ type: "SET_DATA_SOURCE", source })}
                 className={cn(
-                  "rounded-lg px-2.5 py-1 text-xs font-semibold transition-all",
+                  "rounded-lg px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs font-semibold transition-all",
                   state.dataSource === source
                     ? "border border-gold/60 bg-gold/15 text-gold shadow-sm"
                     : "border border-border bg-secondary/30 text-muted-foreground hover:text-foreground",
@@ -89,59 +89,59 @@ function CommandRoom() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          {/* Scanning Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          {/* Scanning Action Buttons: 2x2 grid on mobile, flex on desktop */}
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
             <button
               onClick={() => dispatch({ type: "SET_SCANNING_STATE", state: "SCANNING" })}
               disabled={state.scanningState === "SCANNING"}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all",
+                "inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold transition-all min-h-[40px]",
                 state.scanningState === "SCANNING"
                   ? "bg-success text-success-foreground shadow-md shadow-success/20 ring-2 ring-success/30"
                   : "border border-border bg-secondary/40 text-foreground hover:bg-secondary",
               )}
             >
-              <Play className="size-3.5 fill-current" /> START SCANNING
+              <Play className="size-3.5 fill-current" /> START
             </button>
 
             <button
               onClick={() => dispatch({ type: "SET_SCANNING_STATE", state: "PAUSED" })}
               disabled={state.scanningState === "PAUSED"}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all",
+                "inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold transition-all min-h-[40px]",
                 state.scanningState === "PAUSED"
                   ? "bg-warning text-warning-foreground shadow-md"
                   : "border border-border bg-secondary/40 text-muted-foreground hover:text-foreground",
               )}
             >
-              <Pause className="size-3.5" /> PAUSE SCANNING
+              <Pause className="size-3.5" /> PAUSE
             </button>
 
             <button
               onClick={() => dispatch({ type: "SET_SCANNING_STATE", state: "IDLE" })}
               disabled={state.scanningState === "IDLE"}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all",
+                "inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold transition-all min-h-[40px]",
                 state.scanningState === "IDLE"
                   ? "border border-border bg-secondary text-foreground"
                   : "border border-border bg-secondary/40 text-muted-foreground hover:text-foreground",
               )}
             >
-              <Square className="size-3.5" /> STOP SCANNING
+              <Square className="size-3.5" /> STOP
             </button>
 
             <button
               onClick={() => dispatch({ type: "RESET" })}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-secondary/20 px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-secondary/20 px-2.5 sm:px-3 py-2 text-[11px] sm:text-xs text-muted-foreground hover:text-foreground min-h-[40px]"
               title="Reset state to initial baseline"
             >
-              <RotateCcw className="size-3.5" /> RESET DEMO
+              <RotateCcw className="size-3.5" /> RESET
             </button>
           </div>
 
           {/* Real-time State Monitor */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-border/50">
             <span className="text-[11px] font-mono uppercase text-muted-foreground">STATUS:</span>
             <span className={cn(
               "flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-xs font-bold",
@@ -237,31 +237,31 @@ function CommandRoom() {
             <div
               key={e.id}
               className={cn(
-                "flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-2.5 transition-colors",
+                "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 rounded-xl border p-3 sm:px-4 sm:py-2.5 transition-colors",
                 e.type === "ALERT" ? "border-danger/60 bg-danger/10 text-danger shadow-sm" :
                 e.type === "DEPOSIT" ? "border-gold/30 bg-gold/5" :
                 e.type === "WITHDRAWAL" ? "border-border bg-secondary/30" :
                 "border-border bg-secondary/15",
               )}
             >
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
                 <span className={cn(
                   "size-2 shrink-0 rounded-full",
                   e.type === "ALERT" ? "bg-danger" : e.type === "DEPOSIT" ? "bg-gold" : "bg-muted-foreground",
                 )} />
-                <span className="rounded bg-secondary/60 px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-foreground">
+                <span className="shrink-0 rounded bg-secondary/60 px-2 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold uppercase text-foreground">
                   {e.chain}
                 </span>
                 <span className={cn(
-                  "rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold",
+                  "shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-semibold",
                   e.type === "ALERT" ? "bg-danger/20 text-danger" : "text-muted-foreground",
                 )}>
                   {e.type}
                 </span>
-                <p className="truncate text-sm font-medium text-foreground">{e.detail}</p>
+                <p className="truncate text-xs sm:text-sm font-medium text-foreground">{e.detail}</p>
               </div>
 
-              <div className="flex shrink-0 items-center gap-3">
+              <div className="flex shrink-0 items-center justify-between sm:justify-end gap-3 pl-5 sm:pl-0">
                 <Mono className="hidden text-xs text-muted-foreground md:block">{e.hash.slice(0, 14)}…</Mono>
                 <span className="text-[10px] font-mono text-muted-foreground">
                   {new Date(e.at).toLocaleTimeString()}

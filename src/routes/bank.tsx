@@ -251,11 +251,11 @@ function Bank() {
         </div>
 
         {/* Top Portal Switcher */}
-        <div className="flex items-center rounded-2xl border border-border bg-card/60 p-1.5 backdrop-blur-md">
+        <div className="flex w-full sm:w-auto items-center justify-center rounded-2xl border border-border bg-card/60 p-1 backdrop-blur-md">
           <button
             onClick={() => setPortalTab("sender")}
             className={cn(
-              "flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all",
+              "flex flex-1 sm:flex-none items-center justify-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-semibold uppercase tracking-wider transition-all min-h-[40px]",
               portalTab === "sender"
                 ? "border border-gold/40 bg-gold/15 text-gold shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -268,7 +268,7 @@ function Bank() {
           <button
             onClick={() => setPortalTab("receiver")}
             className={cn(
-              "relative flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all",
+              "relative flex flex-1 sm:flex-none items-center justify-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-semibold uppercase tracking-wider transition-all min-h-[40px]",
               portalTab === "receiver"
                 ? "border border-gold/40 bg-gold/15 text-gold shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -277,7 +277,7 @@ function Bank() {
             <ArrowDownLeft className="size-3.5" />
             Receiver Account (Apex)
             {pendingReceiverCount > 0 && (
-              <span className="flex size-5 items-center justify-center rounded-full bg-gold text-[10px] font-bold text-black animate-pulse">
+              <span className="flex size-4 sm:size-5 items-center justify-center rounded-full bg-gold text-[9px] sm:text-[10px] font-bold text-black animate-pulse">
                 {pendingReceiverCount}
               </span>
             )}
@@ -673,23 +673,23 @@ function Bank() {
                   AG
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-display text-2xl font-bold text-foreground">{state.receiverAccount.name}</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-display text-xl sm:text-2xl font-bold text-foreground">{state.receiverAccount.name}</h2>
                     <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
                       Institutional Beneficiary
                     </span>
                   </div>
-                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>Address: <Mono className="text-foreground">{state.receiverAccount.address}</Mono></span>
-                    <span>· Network: Arbitrum One Institutional Gateway</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span>Address: <Mono className="text-foreground break-all">{state.receiverAccount.address}</Mono></span>
+                    <span>· Network: Arbitrum One Gateway</span>
                   </div>
                 </div>
               </div>
 
               {/* Settled Balance */}
-              <div className="rounded-2xl border border-border bg-secondary/40 px-6 py-4 text-right">
+              <div className="rounded-2xl border border-border bg-secondary/40 px-5 sm:px-6 py-3.5 sm:py-4 text-left sm:text-right">
                 <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Total Settled Balance</span>
-                <p className="font-display text-3xl font-bold text-gold">
+                <p className="font-display text-2xl sm:text-3xl font-bold text-gold">
                   {fmtMoney(state.receiverAccount.balance)} <span className="text-sm font-normal text-muted-foreground">USDC</span>
                 </p>
               </div>
@@ -790,7 +790,7 @@ function Bank() {
   );
 }
 
-const inputCls = "w-full rounded-xl border border-input bg-secondary/40 px-4 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-gold";
+const inputCls = "w-full rounded-xl border border-input bg-secondary/40 px-3.5 sm:px-4 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-gold min-h-[44px]";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

@@ -46,7 +46,7 @@ function Audit() {
                     <td className="px-5 py-3 text-xs text-muted-foreground">{new Date(a.at).toLocaleString()}</td>
                     <td className="px-5 py-3 text-gold">{a.actor}</td>
                     <td className="px-5 py-3"><Mono>{a.action}</Mono></td>
-                    <td className="px-5 py-3 text-muted-foreground">{a.detail}</td>
+                    <td className="px-5 py-3 text-muted-foreground break-all min-w-[180px]">{a.detail}</td>
                   </tr>
                 ))}
               </tbody>
