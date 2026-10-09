@@ -75,6 +75,9 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  // Client-only app: demo state seeds from Date.now()/localStorage and the
+  // theme script toggles <html class>, so SSR would always mismatch.
+  ssr: false,
   head: () => ({
     meta: [
       { charSet: "utf-8" },
