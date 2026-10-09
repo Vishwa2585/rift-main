@@ -62,7 +62,7 @@ function buildGraph(attackCount: number, flagged: boolean): { nodes: Node[]; lin
     });
   });
 
-  const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+  const byId: Record<string, Node> = Object.fromEntries(nodes.map((n) => [n.id, n]));
   const intra: [string, string][] = [["src-origin", "src-bridge"], ["src-bridge", "src-relayer"], ["dst-mint", "dst-vault"], ["dst-vault", "dst-beneficiary"]];
   for (const [a, b] of intra) {
     links.push({ from: byId[a].pos, to: byId[b].pos, broken: false, label: `${a} → ${b}` });

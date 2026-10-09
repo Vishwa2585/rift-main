@@ -29,11 +29,11 @@ function Bank() {
   const { state, dispatch } = useRift();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("clients");
-  const [clientId, setClientId] = useState(CLIENTS[0].id);
+  const [clientId, setClientId] = useState(CLIENTS[0]!.id);
   const client = CLIENTS.find((c) => c.id === clientId)!;
-  const [fromAccount, setFromAccount] = useState(client.accounts[0].id);
-  const [toAccount, setToAccount] = useState(client.accounts[1].id);
-  const [asset, setAsset] = useState(ASSETS[0]);
+  const [fromAccount, setFromAccount] = useState(client.accounts[0]!.id);
+  const [toAccount, setToAccount] = useState(client.accounts[1]!.id);
+  const [asset, setAsset] = useState(ASSETS[0]!);
   const [amount, setAmount] = useState(250_000_000);
   const [destChain, setDestChain] = useState<ChainId>("ethereum");
   const [recipient, setRecipient] = useState("0x7a41…e9c0");
@@ -45,8 +45,8 @@ function Bank() {
   const selectClient = (id: string) => {
     setClientId(id);
     const c = CLIENTS.find((x) => x.id === id)!;
-    setFromAccount(c.accounts[0].id);
-    setToAccount(c.accounts[1].id);
+    setFromAccount(c.accounts[0]!.id);
+    setToAccount(c.accounts[1]!.id);
   };
 
   const createTransfer = () => {
@@ -55,7 +55,7 @@ function Bank() {
       type: "CREATE_TRANSFER",
       transfer: {
         id, clientId, fromAccount, toAccount, asset, amount, destChain, recipient,
-        stage: "CREATED", status: "pending", nfcVerified: false,
+      stage: "CREATED" as const, status: "pending" as const, nfcVerified: false,
         sourceHash: simHash(`${id}:src`), createdAt: Date.now(),
       },
     });

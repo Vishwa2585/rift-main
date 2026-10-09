@@ -74,7 +74,7 @@ export function Intro() {
           x: Math.random() * W, y: -80 - Math.random() * H * 0.5, z: 0.3 + Math.random() * 0.7,
           vx: (Math.random() - 0.5) * 1.2, vy: 1 + Math.random() * 3.2, vz: 0,
           rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.08,
-          kind, glyph: GLYPHS[Math.floor(Math.random() * GLYPHS.length)],
+          kind, glyph: GLYPHS[Math.floor(Math.random() * GLYPHS.length)] ?? "$",
           w: 26 + Math.random() * 30, h: 12 + Math.random() * 14,
           hue: 70 + Math.random() * 30,
         });

@@ -23,7 +23,7 @@ export const Route = createFileRoute("/analytics")({
 function Analytics() {
   const { state } = useRift();
   const bands = { LOW: 0, ELEVATED: 0, HIGH: 0, CRITICAL: 0 } as Record<string, number>;
-  state.incidents.forEach((i) => { bands[riskBand(i.score).label]++; });
+  state.incidents.forEach((i) => { const b = riskBand(i.score).label; bands[b] = (bands[b] ?? 0) + 1; });
   const byChain: Record<string, number> = {};
   state.events.forEach((e) => { byChain[e.chain] = (byChain[e.chain] ?? 0) + 1; });
   const ruleHits: Record<string, number> = {};

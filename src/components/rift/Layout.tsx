@@ -43,6 +43,7 @@ export function useTheme() {
       mq.addEventListener("change", fn);
       return () => mq.removeEventListener("change", fn);
     }
+    return undefined;
   }, [theme]);
   return { theme, setTheme };
 }

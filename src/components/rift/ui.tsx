@@ -30,7 +30,7 @@ export function SimBadge({ label = "SIMULATED" }: { label?: string }) {
   );
 }
 
-export function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "gold" | "danger" | "success" }) {
+export function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "gold" | "danger" | "success" | undefined }) {
   return (
     <GlassPanel className="p-5">
       <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</p>

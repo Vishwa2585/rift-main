@@ -26,7 +26,7 @@ export const Route = createFileRoute("/command-room")({
 function CommandRoom() {
   const { state, dispatch } = useRift();
   const navigate = useNavigate();
-  const [scenarioId, setScenarioId] = useState(SCENARIOS[0].id);
+  const [scenarioId, setScenarioId] = useState(SCENARIOS[0]!.id);
   const scenario = SCENARIOS.find((s) => s.id === scenarioId)!;
   const preview = evaluateScenario(scenario, state.rules);
   const band = riskBand(preview.score);

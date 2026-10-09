@@ -103,7 +103,7 @@ function seedTransfers(): Transfer[] {
 }
 
 function seedIncidents(): Incident[] {
-  const sc = SCENARIOS[0];
+  const sc = SCENARIOS[0]!;
   const { contributions, score } = evaluateScenario(sc, DEFAULT_RULES);
   return [{
     id: "INC-0001", scenarioId: sc.id, title: sc.name, txId: "RFT-TX-0087",
