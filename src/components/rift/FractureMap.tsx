@@ -86,7 +86,8 @@ function buildGraph(attackCount: number, flagged: boolean): { nodes: Node[]; lin
 function NodeMesh({ node, onSelect }: { node: Node; onSelect: (n: Node) => void }) {
   const ref = useRef<THREE.Mesh>(null);
   const [hover, setHover] = useState(false);
-  useFrame(({ clock }) => {
+  useFrame((state: any) => {
+    const clock = state.clock;
     if (ref.current) {
       const s = node.suspicious ? 1 + Math.sin(clock.elapsedTime * 5) * 0.12 : 1;
       ref.current.scale.setScalar(hover ? s * 1.25 : s);
@@ -118,7 +119,8 @@ function NodeMesh({ node, onSelect }: { node: Node; onSelect: (n: Node) => void 
 
 function LinkLine({ link, onSelect }: { link: Link; onSelect: (l: Link) => void }) {
   const ref = useRef<any>(null);
-  useFrame(({ clock }) => {
+  useFrame((state: any) => {
+    const clock = state.clock;
     if (ref.current?.material) {
       ref.current.material.opacity = link.broken ? 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3 : 0.85;
     }
@@ -143,7 +145,7 @@ function Scene({ onSelectNode, onSelectLink }: { onSelectNode: (n: Node) => void
   const flagged = state.incidents.some((i) => i.status !== "resolved");
   const { nodes, links } = useMemo(() => buildGraph(state.attackCount, flagged), [state.attackCount, flagged]);
   const group = useRef<THREE.Group>(null);
-  useFrame((_, delta) => {
+  useFrame((_state: any, delta: number) => {
     if (group.current) group.current.rotation.y += delta * 0.08;
   });
   return (
