@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BankRouteImport } from './routes/bank'
+import { Route as CommandRoomRouteImport } from './routes/command-room'
 import { Route as OverviewRouteImport } from './routes/overview'
+import { Route as TransactionsRouteImport } from './routes/transactions'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,40 +25,59 @@ const BankRoute = BankRouteImport.update({
   path: '/bank',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CommandRoomRoute = CommandRoomRouteImport.update({
+  id: '/command-room',
+  path: '/command-room',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OverviewRoute = OverviewRouteImport.update({
   id: '/overview',
   path: '/overview',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TransactionsRoute = TransactionsRouteImport.update({
+  id: '/transactions',
+  path: '/transactions',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/bank': typeof BankRoute
+  '/command-room': typeof CommandRoomRoute
   '/overview': typeof OverviewRoute
+  '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bank': typeof BankRoute
+  '/command-room': typeof CommandRoomRoute
   '/overview': typeof OverviewRoute
+  '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/bank': typeof BankRoute
+  '/command-room': typeof CommandRoomRoute
   '/overview': typeof OverviewRoute
+  '/transactions': typeof TransactionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/bank' | '/overview'
+  fullPaths: '/' | '/bank' | '/command-room' | '/overview' | '/transactions'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/bank' | '/overview'
-  id: '__root__' | '/' | '/bank' | '/overview'
+  to: '/' | '/bank' | '/command-room' | '/overview' | '/transactions'
+  id:
+    '__root__' | '/' | '/bank' | '/command-room' | '/overview' | '/transactions'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BankRoute: typeof BankRoute
+  CommandRoomRoute: typeof CommandRoomRoute
   OverviewRoute: typeof OverviewRoute
+  TransactionsRoute: typeof TransactionsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,11 +96,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BankRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/command-room': {
+      id: '/command-room'
+      path: '/command-room'
+      fullPath: '/command-room'
+      preLoaderRoute: typeof CommandRoomRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/overview': {
       id: '/overview'
       path: '/overview'
       fullPath: '/overview'
       preLoaderRoute: typeof OverviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/transactions': {
+      id: '/transactions'
+      path: '/transactions'
+      fullPath: '/transactions'
+      preLoaderRoute: typeof TransactionsRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -88,7 +123,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BankRoute: BankRoute,
+  CommandRoomRoute: CommandRoomRoute,
   OverviewRoute: OverviewRoute,
+  TransactionsRoute: TransactionsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
