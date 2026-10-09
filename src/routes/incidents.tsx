@@ -164,10 +164,10 @@ function Incidents() {
           {inc && (
             <div className="space-y-6 lg:col-span-8">
               {/* A. INCIDENT SUMMARY */}
-              <GlassPanel deep className="p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
+              <GlassPanel deep className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded bg-gold/20 px-2 py-0.5 font-mono text-[11px] font-bold uppercase text-gold">
                         {inc.id}
                       </span>
@@ -177,15 +177,15 @@ function Incidents() {
                       </span>
                     </div>
 
-                    <h3 className="mt-2 font-display text-2xl font-bold text-foreground">{inc.title}</h3>
+                    <h3 className="mt-2 font-display text-xl sm:text-2xl font-bold text-foreground">{inc.title}</h3>
                     <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                       <Clock className="size-3.5" /> Detected: {new Date(inc.createdAt).toLocaleString()}
                     </p>
                   </div>
 
-                  <div className="text-right">
+                  <div className="text-left sm:text-right">
                     <p className={cn(
-                      "font-display text-5xl font-black tracking-tight",
+                      "font-display text-4xl sm:text-5xl font-black tracking-tight",
                       inc.score >= 60 ? "text-danger" : inc.score >= 35 ? "text-warning" : "text-success"
                     )}>
                       {inc.score}
@@ -267,8 +267,8 @@ function Incidents() {
               </GlassPanel>
 
               {/* B. EVENT EVIDENCE & CROSS-CHAIN PATH */}
-              <GlassPanel className="p-6">
-                <div className="mb-4 flex items-center justify-between">
+              <GlassPanel className="p-4 sm:p-6">
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                   <h4 className="font-display text-lg font-bold">Cross-Chain Event Evidence</h4>
                   <span className="font-mono text-xs text-gold">Bridge Message: {pair?.bridgeMsgId || "MSG-88412"}</span>
                 </div>
@@ -379,7 +379,7 @@ function Incidents() {
               </GlassPanel>
 
               {/* C. DETECTION EXPLANATION: EXPECTED VS OBSERVED */}
-              <GlassPanel className="p-6">
+              <GlassPanel className="p-4 sm:p-6">
                 <h4 className="mb-2 font-display text-lg font-bold">Rule Evaluation & Divergence Explanation</h4>
                 <p className="mb-4 text-xs text-muted-foreground">
                   Deterministic conditions evaluated against the cross-chain evidence:
@@ -388,12 +388,12 @@ function Incidents() {
                 <div className="space-y-3">
                   {inc.ruleResults.filter((r) => r.triggered).map((r) => (
                     <div key={r.ruleId} className="rounded-xl border border-danger/40 bg-danger/10 p-4">
-                      <div className="flex items-center justify-between pb-2 border-b border-danger/20">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-danger/20">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-danger">{r.ruleId}</span>
                           <span className="font-semibold text-foreground text-sm">{r.ruleName}</span>
                         </div>
-                        <span className="rounded bg-danger/20 px-2 py-0.5 font-mono text-xs font-bold text-danger">
+                        <span className="self-start sm:self-auto rounded bg-danger/20 px-2 py-0.5 font-mono text-xs font-bold text-danger">
                           +{r.riskContribution} PTS
                         </span>
                       </div>
@@ -415,7 +415,7 @@ function Incidents() {
                   ))}
 
                   {inc.ruleResults.filter((r) => !r.triggered).map((r) => (
-                    <div key={r.ruleId} className="flex items-center justify-between rounded-lg border border-border/60 bg-secondary/20 px-3 py-2 text-xs opacity-60">
+                    <div key={r.ruleId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 rounded-lg border border-border/60 bg-secondary/20 px-3 py-2 text-xs opacity-60">
                       <span className="text-muted-foreground">
                         <Mono className="mr-2">{r.ruleId}</Mono> {r.ruleName}: {r.reason}
                       </span>
@@ -437,7 +437,7 @@ function Incidents() {
               </GlassPanel>
 
               {/* E. INCIDENT TIMELINE */}
-              <GlassPanel className="p-6">
+              <GlassPanel className="p-4 sm:p-6">
                 <h4 className="mb-4 font-display text-lg font-bold">Investigation Audit Timeline</h4>
                 <div className="relative space-y-3 pl-4 border-l-2 border-border/80">
                   {inc.timeline.map((entry, idx) => (
@@ -461,7 +461,7 @@ function Incidents() {
               </GlassPanel>
 
               {/* INVESTIGATION NOTES */}
-              <GlassPanel className="p-6">
+              <GlassPanel className="p-4 sm:p-6">
                 <h4 className="mb-3 font-display text-lg font-bold">Analyst Notes & Logged Justifications</h4>
                 <div className="space-y-2 mb-4">
                   {inc.notes.length === 0 ? (
@@ -540,7 +540,7 @@ function Incidents() {
       {/* Rules Drawer / Modal */}
       {showRulesDrawer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-xl max-h-[80vh] overflow-y-auto rounded-2xl border border-border bg-background p-6 shadow-2xl">
+          <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-border bg-background p-4 sm:p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-border">
               <h4 className="font-display text-lg font-bold">Detection Rules Configuration</h4>
               <button onClick={() => setShowRulesDrawer(false)} className="text-muted-foreground hover:text-foreground text-xs font-mono">
@@ -550,9 +550,9 @@ function Incidents() {
 
             <div className="mt-4 space-y-2.5">
               {state.rules.map((rule) => (
-                <div key={rule.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/20 p-3">
+                <div key={rule.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-secondary/20 p-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Mono className="font-bold text-xs text-gold">{rule.id}</Mono>
                       <span className="text-xs font-semibold text-foreground">{rule.name}</span>
                       <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] uppercase font-mono text-muted-foreground">{rule.severity}</span>
@@ -562,7 +562,7 @@ function Incidents() {
                   <button
                     onClick={() => dispatch({ type: "TOGGLE_RULE", id: rule.id })}
                     className={cn(
-                      "rounded-lg px-2.5 py-1 text-xs font-mono font-bold transition-all",
+                      "self-start sm:self-auto rounded-lg px-2.5 py-1 text-xs font-mono font-bold transition-all",
                       rule.enabled ? "bg-success/20 text-success border border-success/30" : "bg-secondary text-muted-foreground"
                     )}
                   >

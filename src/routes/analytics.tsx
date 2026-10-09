@@ -39,19 +39,19 @@ function Analytics() {
         <Stat label="Clients under watch" value={String(CLIENTS.length)} sub={fmtMoney(CLIENTS.reduce((s, c) => s + c.netWorthB * 1e9, 0)) + " fictional net worth"} />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <GlassPanel className="p-6">
+        <GlassPanel className="p-4 sm:p-6">
           <h3 className="mb-6 font-display text-lg font-semibold">Risk distribution</h3>
           <Bars data={Object.entries(bands).map(([label, value]) => ({ label, value, tone: label === "CRITICAL" || label === "HIGH" ? "danger" : "gold" }))} />
         </GlassPanel>
-        <GlassPanel className="p-6">
+        <GlassPanel className="p-4 sm:p-6">
           <h3 className="mb-6 font-display text-lg font-semibold">Events by chain</h3>
           <Bars data={Object.entries(byChain).map(([label, value]) => ({ label: label.slice(0, 8), value }))} />
         </GlassPanel>
-        <GlassPanel className="p-6">
+        <GlassPanel className="p-4 sm:p-6">
           <h3 className="mb-6 font-display text-lg font-semibold">Rule activations</h3>
           <Bars data={state.rules.map((r) => ({ label: r.id, value: ruleHits[r.id] ?? 0, tone: r.enabled ? "gold" : "muted" }))} />
         </GlassPanel>
-        <GlassPanel className="p-6">
+        <GlassPanel className="p-4 sm:p-6">
           <h3 className="mb-6 font-display text-lg font-semibold">Aggregate allocation</h3>
           <Donut slices={["Equities", "Real Assets", "Digital Assets", "Cash & Bonds"].map((label) => ({
             label, pct: Math.round(CLIENTS.reduce((s, c) => s + (c.allocation.find((a) => a.label === label)?.pct ?? 0), 0) / CLIENTS.length),

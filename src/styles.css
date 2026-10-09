@@ -111,6 +111,9 @@
     scroll-behavior: smooth;
     text-size-adjust: 100%;
     -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
   }
   body {
     background-color: var(--color-background);
@@ -119,8 +122,20 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
     min-height: 100vh;
     min-height: 100dvh;
+    position: relative;
+    touch-action: manipulation;
+  }
+  input, select, textarea {
+    font-size: 16px;
+  }
+  @media (min-width: 640px) {
+    input, select, textarea {
+      font-size: 14px;
+    }
   }
   h1, h2, h3, .font-display {
     font-family: var(--font-display);
@@ -129,6 +144,14 @@
     background: var(--color-gold);
     color: var(--color-gold-foreground);
   }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Slim modern scrollbars */

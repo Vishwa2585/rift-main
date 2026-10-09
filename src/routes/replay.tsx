@@ -58,7 +58,7 @@ function Replay() {
     <AppLayout>
       <SectionTitle eyebrow="Historical investigation" title="Replay Lab" right={<SimBadge label="CURATED SAMPLE DATASET" />} />
 
-      <GlassPanel className="p-6">
+      <GlassPanel className="p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-3">
           {playing ? (
             <GoldButton onClick={() => setPlaying(false)}><Pause className="size-4" /> Pause</GoldButton>
@@ -101,7 +101,7 @@ function Replay() {
       </GlassPanel>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <GlassPanel className="p-6">
+        <GlassPanel className="p-4 sm:p-6">
           <h3 className="mb-1 font-display text-lg font-semibold">Rule toggles</h3>
           <p className="mb-4 text-xs text-muted-foreground">Toggle a rule to see how the simulated verdict changes. Shared with the Command Room.</p>
           <div className="space-y-1.5">
@@ -114,12 +114,12 @@ function Replay() {
           </div>
         </GlassPanel>
 
-        <GlassPanel deep className="p-6">
+        <GlassPanel deep className="p-4 sm:p-6">
           <h3 className="mb-4 font-display text-lg font-semibold">Before / after comparison</h3>
           {!verdictVisible ? (
             <p className="text-sm text-muted-foreground">Play the replay to the end to evaluate the verdict.</p>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[{ label: "Default rules", r: before }, { label: "Current rules", r: after }].map(({ label, r }) => (
                 <div key={label} className="rounded-xl border border-border p-4">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>

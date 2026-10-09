@@ -62,13 +62,13 @@ export function NfcPanel({ onRead, compact }: { onRead?: (r: NfcReadResult) => v
       {result && (
         <div className="rounded-2xl border border-border bg-secondary/30 p-4">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gold">Actual NFC read result</p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
-            <dt className="text-muted-foreground">Serial</dt><dd><Mono>{result.serialNumber}</Mono></dd>
-            <dt className="text-muted-foreground">Payload</dt><dd><Mono>{result.payload ?? "(empty)"}</Mono></dd>
-            <dt className="text-muted-foreground">Records</dt><dd><Mono>{result.records.map((r) => r.recordType).join(", ") || "none"}</Mono></dd>
-            <dt className="text-muted-foreground">Read at</dt><dd><Mono>{new Date(result.at).toLocaleTimeString()}</Mono></dd>
+          <dl className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs min-w-0">
+            <dt className="text-muted-foreground">Serial</dt><dd className="min-w-0"><Mono className="break-all">{result.serialNumber}</Mono></dd>
+            <dt className="text-muted-foreground">Payload</dt><dd className="min-w-0"><Mono className="break-all">{result.payload ?? "(empty)"}</Mono></dd>
+            <dt className="text-muted-foreground">Records</dt><dd className="min-w-0"><Mono className="break-all">{result.records.map((r) => r.recordType).join(", ") || "none"}</Mono></dd>
+            <dt className="text-muted-foreground">Read at</dt><dd className="min-w-0"><Mono>{new Date(result.at).toLocaleTimeString()}</Mono></dd>
             <dt className="text-muted-foreground">Device</dt>
-            <dd className={result.recognized ? "text-success" : "text-danger"}>
+            <dd className={cn("min-w-0", result.recognized ? "text-success" : "text-danger")}>
               {result.recognized ? result.recognized.label : "Not enrolled — authorization refused"}
             </dd>
           </dl>

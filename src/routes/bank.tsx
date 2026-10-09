@@ -241,11 +241,11 @@ function Bank() {
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-gold">RIFT Financial Operations</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] text-gold">RIFT Financial Operations</span>
             <SimBadge label="INTERACTIVE DEMONSTRATION" />
           </div>
-          <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+          <h1 className="mt-1 font-display text-2xl sm:text-3xl font-bold tracking-tight text-foreground md:text-4xl">
             {portalTab === "sender" ? "Private Vault Reserves" : "Demo Receiver Settlement Account"}
           </h1>
         </div>
@@ -342,9 +342,9 @@ function Bank() {
 
               {/* Transfer configuration & live RIFT rule checks */}
               <GlassPanel className="p-6 lg:col-span-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display text-xl font-semibold">Initiate Cross-Chain Settlement</h3>
-                  <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h3 className="font-display text-lg sm:text-xl font-semibold">Initiate Cross-Chain Settlement</h3>
+                  <span className="self-start sm:self-auto flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
                     <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     RIFT Engine Live Pre-Scan
                   </span>
@@ -426,15 +426,15 @@ function Bank() {
 
                 {/* REAL-TIME RIFT INVARIANT RULES VERIFICATION WIDGET */}
                 <div className="mt-5 rounded-2xl border border-border bg-card/40 p-4">
-                  <div className="mb-3 flex items-center justify-between">
+                  <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <ShieldCheck className="size-4 text-emerald-400" />
+                      <ShieldCheck className="size-4 text-emerald-400 shrink-0" />
                       <span className="text-xs font-bold uppercase tracking-wider text-foreground">
                         Real-Time Invariant Pre-Scan ({preflight.checks.filter((c) => c.passed).length}/8 Rules Valid)
                       </span>
                     </div>
                     <span className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                      "self-start sm:self-auto rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
                       preflight.allPassed ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
                     )}>
                       {preflight.allPassed ? "Ready for Execution" : "Adjust Parameters"}

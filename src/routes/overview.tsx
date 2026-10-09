@@ -31,7 +31,7 @@ function Overview() {
     <AppLayout>
       <SectionTitle eyebrow="Command" title="Overview" />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 xl:grid-cols-4">
         <Stat label="Total Simulated Assets" value={fmtMoney(totalAssets)} sub="Across 6 fictional clients" tone="gold" />
         <Stat label="Simulated Volume" value={fmtMoney(volume)} sub={`${state.transfers.length} transfers`} />
         <Stat label="Active Incidents" value={String(openIncidents.length)} sub="Simulated detection" tone={openIncidents.length ? "danger" : "success"} />
@@ -39,19 +39,19 @@ function Overview() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <GlassPanel className="p-6 lg:col-span-2">
+        <GlassPanel className="p-4 sm:p-6 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-display text-lg font-semibold">Transaction Volume</h3>
+            <h3 className="font-display text-base sm:text-lg font-semibold">Transaction Volume</h3>
             <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Simulated</span>
           </div>
           <Sparkline data={volumeSeries.length > 1 ? volumeSeries : [10, 20, 35, 30, 48, 60]} height={90} />
           <div className="mt-6 space-y-2">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Recent Activity</p>
+            <p className="text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Recent Activity</p>
             {state.events.slice(0, 5).map((e) => (
-              <div key={e.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/30 px-4 py-2.5">
+              <div key={e.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/30 p-3 sm:px-4 sm:py-2.5">
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-foreground">{e.detail}</p>
-                  <Mono className="text-muted-foreground">{e.chain} · {e.txId}</Mono>
+                  <p className="truncate text-xs sm:text-sm text-foreground">{e.detail}</p>
+                  <Mono className="text-muted-foreground text-[10px] sm:text-xs">{e.chain} · {e.txId}</Mono>
                 </div>
                 <span className="shrink-0 text-[10px] text-muted-foreground">{new Date(e.at).toLocaleTimeString()}</span>
               </div>

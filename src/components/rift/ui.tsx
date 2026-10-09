@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 export function GlassPanel({ className, children, deep }: { className?: string; children: React.ReactNode; deep?: boolean }) {
   return (
-    <div className={cn(deep ? "glass-deep" : "glass", "rounded-2xl", className)}>
+    <div className={cn(deep ? "glass-deep" : "glass", "rounded-2xl max-w-full overflow-hidden", className)}>
       {children}
     </div>
   );
@@ -11,31 +11,31 @@ export function GlassPanel({ className, children, deep }: { className?: string; 
 
 export function SectionTitle({ eyebrow, title, right }: { eyebrow?: string; title: string; right?: React.ReactNode }) {
   return (
-    <div className="mb-5 flex items-end justify-between gap-4">
-      <div>
-        {eyebrow && <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.22em] text-gold">{eyebrow}</p>}
-        <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
+    <div className="mb-4 sm:mb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-2.5 sm:gap-4">
+      <div className="min-w-0">
+        {eyebrow && <p className="mb-1 text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.22em] text-gold">{eyebrow}</p>}
+        <h2 className="font-display text-xl sm:text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
       </div>
-      {right}
+      {right && <div className="self-start sm:self-auto shrink-0 max-w-full">{right}</div>}
     </div>
   );
 }
 
 export function SimBadge({ label = "SIMULATED" }: { label?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-gold">
-      <span className="size-1.5 rounded-full bg-gold" />
-      {label}
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.16em] text-gold max-w-full">
+      <span className="size-1.5 shrink-0 rounded-full bg-gold" />
+      <span className="truncate">{label}</span>
     </span>
   );
 }
 
 export function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "gold" | "danger" | "success" | undefined }) {
   return (
-    <GlassPanel className="p-5">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+    <GlassPanel className="p-4 sm:p-5">
+      <p className="text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <p className={cn(
-        "mt-2 font-display text-3xl font-semibold tracking-tight",
+        "mt-1.5 sm:mt-2 font-display text-2xl sm:text-3xl font-semibold tracking-tight",
         tone === "gold" && "gold-text",
         tone === "danger" && "text-danger",
         tone === "success" && "text-success",
@@ -43,7 +43,7 @@ export function Stat({ label, value, sub, tone }: { label: string; value: string
       )}>
         {value}
       </p>
-      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+      {sub && <p className="mt-1 text-xs text-muted-foreground truncate">{sub}</p>}
     </GlassPanel>
   );
 }

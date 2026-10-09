@@ -28,7 +28,7 @@ function RiftKey() {
     <AppLayout>
       <SectionTitle eyebrow="Hardware" title="RIFT Key" />
       <div className="grid gap-6 lg:grid-cols-5">
-        <GlassPanel className="p-6 lg:col-span-3">
+        <GlassPanel className="p-4 sm:p-6 lg:col-span-3">
           <NfcPanel
             onRead={(r) => {
               dispatch({ type: "AUDIT", actor: "RIFT KEY", action: "TAG_READ", detail: `Payload ${r.payload ?? "(empty)"} · ${r.recognized ? "recognized" : "unrecognized"}` });
@@ -39,7 +39,7 @@ function RiftKey() {
           />
         </GlassPanel>
         <div className="space-y-6 lg:col-span-2">
-          <GlassPanel className="p-6">
+          <GlassPanel className="p-4 sm:p-6">
             <h3 className="mb-3 font-display text-lg font-semibold">Enrolled demo devices</h3>
             {ENROLLED_DEVICES.map((d) => (
               <div key={d.id} className="rounded-xl border border-border bg-secondary/30 p-4">
@@ -48,7 +48,7 @@ function RiftKey() {
               </div>
             ))}
           </GlassPanel>
-          <GlassPanel className="p-6">
+          <GlassPanel className="p-4 sm:p-6">
             <h3 className="mb-3 font-display text-lg font-semibold">Transfer awaiting authorization</h3>
             {pending ? (
               <div className="space-y-2">

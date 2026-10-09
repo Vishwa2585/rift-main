@@ -180,10 +180,12 @@ function Scene({
   onSelectNode,
   onSelectLink,
   selectedId,
+  oneFingerRotate,
 }: {
   onSelectNode: (n: Node) => void;
   onSelectLink: (l: Link) => void;
   selectedId?: string | undefined;
+  oneFingerRotate?: boolean | undefined;
 }) {
   const { state } = useRift();
   const flagged = state.incidents.some((i) => i.status !== "resolved");
@@ -225,7 +227,12 @@ function Scene({
           <meshBasicMaterial color="#7fa8c9" transparent opacity={0.35} side={THREE.DoubleSide} />
         </mesh>
       </group>
-      <OrbitControls enablePan={false} minDistance={4} maxDistance={12} />
+      <OrbitControls
+        enablePan={false}
+        enableRotate={Boolean(oneFingerRotate)}
+        minDistance={4}
+        maxDistance={12}
+      />
     </>
   );
 }
@@ -241,6 +248,7 @@ function webglAvailable(): boolean {
 
 export function FractureMap({ height = 460 }: { height?: number }) {
   const [selection, setSelection] = useState<SelectionState | null>(null);
+  const [oneFingerRotate, setOneFingerRotate] = useState(false);
   const { state } = useRift();
   const [supported] = useState(() => (typeof window === "undefined" ? false : webglAvailable()));
 
@@ -260,14 +268,19 @@ export function FractureMap({ height = 460 }: { height?: number }) {
   }
 
   return (
-    <div className="relative">
-      <div className="overflow-hidden rounded-2xl border border-border bg-black h-[320px] sm:h-[420px] lg:h-[500px]">
-        <Canvas camera={{ position: [0, 1.2, 7.5], fov: 55 }} dpr={[1, 1.5]}>
+    <div className="relative max-w-full">
+      <div className="overflow-hidden rounded-2xl border border-border bg-black h-[340px] sm:h-[440px] lg:h-[500px]">
+        <Canvas
+          camera={{ position: [0, 1.2, 7.5], fov: 55 }}
+          dpr={[1, 1.5]}
+          style={{ touchAction: oneFingerRotate ? "none" : "pan-y" }}
+        >
           <color attach="background" args={["#05060a"]} />
           <fog attach="fog" args={["#05060a", 9, 16]} />
           <Suspense fallback={null}>
             <Scene
               selectedId={selection?.id}
+              oneFingerRotate={oneFingerRotate}
               onSelectNode={(n) => setSelection({
                 id: n.id,
                 kind: "node",
@@ -290,12 +303,23 @@ export function FractureMap({ height = 460 }: { height?: number }) {
           <span className="rounded-full border border-gold/40 bg-black/80 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.18em] text-gold backdrop-blur">Source Chain</span>
           <span className="rounded-full border border-[#7fa8c9]/40 bg-black/80 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7fa8c9] backdrop-blur">Destination Chain</span>
         </div>
-        <p className="pointer-events-none absolute bottom-2.5 left-3 sm:left-4 text-[9px] sm:text-[10px] text-white/50">Drag to rotate · pinch/scroll to zoom · tap nodes or paths to inspect</p>
+
+        {/* Bottom controls: Touch rotate toggle on mobile */}
+        <div className="absolute bottom-2.5 inset-x-3 sm:inset-x-4 flex items-center justify-between pointer-events-none">
+          <p className="text-[9px] sm:text-[10px] text-white/50 truncate">Tap nodes to inspect</p>
+          <button
+            onClick={() => setOneFingerRotate(!oneFingerRotate)}
+            className="pointer-events-auto rounded-full border border-white/20 bg-black/80 px-2.5 py-0.5 text-[9px] sm:text-[10px] text-white/80 hover:text-white flex items-center gap-1 backdrop-blur transition-colors"
+            title="Toggle 1-finger 3D rotation vs page scroll safe mode"
+          >
+            <span>{oneFingerRotate ? "🔒 1-Finger 3D Active" : "👆 2-Finger 3D (Scroll Safe)"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Enhanced Solid High-Contrast Telemetry Inspection Window */}
       {selection && (
-        <div className="absolute inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:top-4 sm:w-84 max-w-sm rounded-2xl border border-gold/50 bg-[#0d0e17] p-4 sm:p-5 z-30 shadow-[0_25px_60px_rgba(0,0,0,0.95)] ring-1 ring-gold/25 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute inset-x-2 bottom-2 sm:inset-auto sm:right-4 sm:top-4 sm:w-84 max-w-sm max-h-[85%] overflow-y-auto rounded-2xl border border-gold/50 bg-[#0d0e17] p-3.5 sm:p-5 z-30 shadow-[0_25px_60px_rgba(0,0,0,0.95)] ring-1 ring-gold/25 animate-in fade-in zoom-in-95 duration-150">
           {/* Header with chain badge and close button */}
           <div className="flex items-center justify-between pb-3 border-b border-white/10">
             <div className="flex items-center gap-2">

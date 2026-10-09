@@ -77,7 +77,7 @@ function Transactions() {
           })}
         </div>
 
-        <GlassPanel className="h-fit p-6 lg:col-span-2">
+        <GlassPanel className="h-fit p-4 sm:p-6 lg:col-span-2">
           {!tx ? (
             <p className="text-sm text-muted-foreground">Select a transfer to inspect its simulated details.</p>
           ) : (
@@ -86,14 +86,14 @@ function Transactions() {
                 <h3 className="font-display text-lg font-semibold">{tx.id}</h3>
                 <StatusPill status={tx.status} />
               </div>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                <dt className="text-muted-foreground">Client</dt><dd>{CLIENTS.find((x) => x.id === tx.clientId)?.name}</dd>
-                <dt className="text-muted-foreground">Amount</dt><dd className="font-semibold text-gold">{fmtMoney(tx.amount)} {tx.asset}</dd>
-                <dt className="text-muted-foreground">Stage</dt><dd>{tx.stage.replaceAll("_", " ")}</dd>
-                <dt className="text-muted-foreground">Recipient</dt><dd><Mono className="break-all">{tx.recipient}</Mono></dd>
-                <dt className="text-muted-foreground">Source hash</dt><dd><Mono className="break-all">{tx.sourceHash.slice(0, 30)}… (simulated)</Mono></dd>
-                <dt className="text-muted-foreground">RIFT Key</dt><dd>{tx.nfcVerified ? `Verified · ${tx.nfcPayload}` : "Not verified"}</dd>
-                <dt className="text-muted-foreground">Created</dt><dd>{new Date(tx.createdAt).toLocaleString()}</dd>
+              <dl className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm min-w-0">
+                <dt className="text-muted-foreground">Client</dt><dd className="min-w-0 break-words">{CLIENTS.find((x) => x.id === tx.clientId)?.name}</dd>
+                <dt className="text-muted-foreground">Amount</dt><dd className="font-semibold text-gold min-w-0">{fmtMoney(tx.amount)} {tx.asset}</dd>
+                <dt className="text-muted-foreground">Stage</dt><dd className="min-w-0">{tx.stage.replaceAll("_", " ")}</dd>
+                <dt className="text-muted-foreground">Recipient</dt><dd className="min-w-0"><Mono className="break-all">{tx.recipient}</Mono></dd>
+                <dt className="text-muted-foreground">Source hash</dt><dd className="min-w-0"><Mono className="break-all">{tx.sourceHash.slice(0, 30)}… (simulated)</Mono></dd>
+                <dt className="text-muted-foreground">RIFT Key</dt><dd className="min-w-0">{tx.nfcVerified ? `Verified · ${tx.nfcPayload}` : "Not verified"}</dd>
+                <dt className="text-muted-foreground">Created</dt><dd className="min-w-0">{new Date(tx.createdAt).toLocaleString()}</dd>
               </dl>
               {(tx.status === "pending" || tx.status === "flagged") && (
                 <div className="mt-5 flex gap-2">

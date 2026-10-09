@@ -82,7 +82,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const openIncidents = state.incidents.filter((i) => i.status !== "resolved").length;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background w-full max-w-full overflow-x-hidden">
       {/* ambient backdrop */}
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute inset-0" style={{ background: "radial-gradient(1200px 600px at 80% -10%, color-mix(in oklab, var(--color-gold) 8%, transparent), transparent 60%)" }} />
@@ -211,12 +211,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      <main className="lg:pl-64 pb-20 lg:pb-8">
-        <div className="mx-auto max-w-6xl px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
+      <main className="lg:pl-64 pb-24 lg:pb-8 w-full max-w-full overflow-x-hidden min-w-0">
+        <div className="mx-auto max-w-6xl w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-8 min-w-0">
           {/* High Priority Live Alert Banner */}
           {state.activeAlert && (
             <div className="mb-6 animate-pulse rounded-2xl border border-danger/60 bg-danger/15 p-4 shadow-lg shadow-danger/10 backdrop-blur-md">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <span className="flex size-3 rounded-full bg-danger ring-4 ring-danger/30" />
                   <div>
