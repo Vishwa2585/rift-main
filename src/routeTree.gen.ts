@@ -10,16 +10,30 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as AuditRouteImport } from './routes/audit'
 import { Route as BankRouteImport } from './routes/bank'
 import { Route as CommandRoomRouteImport } from './routes/command-room'
 import { Route as IncidentsRouteImport } from './routes/incidents'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as ReplayRouteImport } from './routes/replay'
+import { Route as RiftKeyRouteImport } from './routes/rift-key'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditRoute = AuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BankRoute = BankRouteImport.update({
@@ -47,6 +61,16 @@ const ReplayRoute = ReplayRouteImport.update({
   path: '/replay',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RiftKeyRoute = RiftKeyRouteImport.update({
+  id: '/rift-key',
+  path: '/rift-key',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TransactionsRoute = TransactionsRouteImport.update({
   id: '/transactions',
   path: '/transactions',
@@ -55,69 +79,97 @@ const TransactionsRoute = TransactionsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/audit': typeof AuditRoute
   '/bank': typeof BankRoute
   '/command-room': typeof CommandRoomRoute
   '/incidents': typeof IncidentsRoute
   '/overview': typeof OverviewRoute
   '/replay': typeof ReplayRoute
+  '/rift-key': typeof RiftKeyRoute
+  '/settings': typeof SettingsRoute
   '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/audit': typeof AuditRoute
   '/bank': typeof BankRoute
   '/command-room': typeof CommandRoomRoute
   '/incidents': typeof IncidentsRoute
   '/overview': typeof OverviewRoute
   '/replay': typeof ReplayRoute
+  '/rift-key': typeof RiftKeyRoute
+  '/settings': typeof SettingsRoute
   '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/audit': typeof AuditRoute
   '/bank': typeof BankRoute
   '/command-room': typeof CommandRoomRoute
   '/incidents': typeof IncidentsRoute
   '/overview': typeof OverviewRoute
   '/replay': typeof ReplayRoute
+  '/rift-key': typeof RiftKeyRoute
+  '/settings': typeof SettingsRoute
   '/transactions': typeof TransactionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/analytics'
+    | '/audit'
     | '/bank'
     | '/command-room'
     | '/incidents'
     | '/overview'
     | '/replay'
+    | '/rift-key'
+    | '/settings'
     | '/transactions'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/analytics'
+    | '/audit'
     | '/bank'
     | '/command-room'
     | '/incidents'
     | '/overview'
     | '/replay'
+    | '/rift-key'
+    | '/settings'
     | '/transactions'
   id:
     | '__root__'
     | '/'
+    | '/analytics'
+    | '/audit'
     | '/bank'
     | '/command-room'
     | '/incidents'
     | '/overview'
     | '/replay'
+    | '/rift-key'
+    | '/settings'
     | '/transactions'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalyticsRoute: typeof AnalyticsRoute
+  AuditRoute: typeof AuditRoute
   BankRoute: typeof BankRoute
   CommandRoomRoute: typeof CommandRoomRoute
   IncidentsRoute: typeof IncidentsRoute
   OverviewRoute: typeof OverviewRoute
   ReplayRoute: typeof ReplayRoute
+  RiftKeyRoute: typeof RiftKeyRoute
+  SettingsRoute: typeof SettingsRoute
   TransactionsRoute: typeof TransactionsRoute
 }
 
@@ -128,6 +180,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit': {
+      id: '/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/bank': {
@@ -165,6 +231,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReplayRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rift-key': {
+      id: '/rift-key'
+      path: '/rift-key'
+      fullPath: '/rift-key'
+      preLoaderRoute: typeof RiftKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/transactions': {
       id: '/transactions'
       path: '/transactions'
@@ -177,11 +257,15 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalyticsRoute: AnalyticsRoute,
+  AuditRoute: AuditRoute,
   BankRoute: BankRoute,
   CommandRoomRoute: CommandRoomRoute,
   IncidentsRoute: IncidentsRoute,
   OverviewRoute: OverviewRoute,
   ReplayRoute: ReplayRoute,
+  RiftKeyRoute: RiftKeyRoute,
+  SettingsRoute: SettingsRoute,
   TransactionsRoute: TransactionsRoute,
 }
 export const routeTree = rootRouteImport
