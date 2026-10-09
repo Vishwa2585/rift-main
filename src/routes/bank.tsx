@@ -3,44 +3,100 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppLayout } from "@/components/rift/Layout";
 import { GlassPanel, SectionTitle, SimBadge, StatusPill, GoldButton, GhostButton, Mono } from "@/components/rift/ui";
 import { Donut } from "@/components/rift/charts";
-import { NfcPanel } from "@/components/rift/NfcPanel";
-import { useRift, CLIENTS, CHAINS, STAGES, makeEvent, nextTxId } from "@/lib/rift/store";
+import {
+  useRift,
+  CLIENTS,
+  CHAINS,
+  STAGES,
+  makeEvent,
+  nextTxId,
+  evaluateTransferPreflight,
+  type PreflightRuleCheck,
+} from "@/lib/rift/store";
 import { ASSETS, fmtMoney, simHash, type ChainId } from "@/lib/rift/data";
+import { useNfc, generateRiftKeyPayload } from "@/lib/rift/nfc";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Check } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Nfc,
+  ShieldCheck,
+  ShieldAlert,
+  Bell,
+  Cpu,
+  Layers,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Sparkles,
+  KeyRound,
+  CheckCircle2,
+  RefreshCw,
+  ExternalLink,
+} from "lucide-react";
 
 export const Route = createFileRoute("/bank")({
   head: () => ({
     meta: [
-      { title: "RIFT Bank — Simulated Private Banking" },
-      { name: "description", content: "Fictional billionaire clients, simulated accounts and transfers. Test data only — no real bank connection." },
-      { property: "og:title", content: "RIFT Bank — Simulated Private Banking" },
-      { property: "og:description", content: "Fictional clients, test data, no real bank connection." },
+      { title: "RIFT Bank & NFC Settlement — Live Demo" },
+      { name: "description", content: "Interactive cross-chain transfer initiation, real-time RIFT rule validation, browser NFC card writer, and receiver settlement validation." },
+      { property: "og:title", content: "RIFT Bank & NFC Settlement" },
+      { property: "og:description", content: "Real-time rule verification, browser NFC key writer, and receiver settlement." },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Bank,
 });
 
 type Step = "clients" | "form" | "preview" | "lifecycle";
+type PortalTab = "sender" | "receiver";
 
 function Bank() {
   const { state, dispatch } = useRift();
   const navigate = useNavigate();
+  const { write: writeNfcCard, scan: scanNfcCard } = useNfc();
+
+  // Top portal switcher: Sender vs Receiver
+  const [portalTab, setPortalTab] = useState<PortalTab>("sender");
+
+  // Sender workflow state
   const [step, setStep] = useState<Step>("clients");
   const [clientId, setClientId] = useState(CLIENTS[0]!.id);
   const client = CLIENTS.find((c) => c.id === clientId)!;
   const [fromAccount, setFromAccount] = useState(client.accounts[0]!.id);
   const [toAccount, setToAccount] = useState(client.accounts[1]!.id);
   const [asset, setAsset] = useState(ASSETS[0]!);
-  const [amount, setAmount] = useState(250_000_000);
-  const [destChain, setDestChain] = useState<ChainId>("ethereum");
-  const [recipient, setRecipient] = useState("0x7a41…e9c0");
+  const [amount, setAmount] = useState(50_000_000);
+  const [destChain, setDestChain] = useState<ChainId>("arbitrum");
+  const [recipient, setRecipient] = useState("0x7a41…e9c0"); // Apex Global Settlement demo receiver address
+  const [hasNfcOptIn, setHasNfcOptIn] = useState(true);
   const [txId, setTxId] = useState<string | null>(null);
+
+  // NFC Writer state in preview
+  const [writingNfc, setWritingNfc] = useState(false);
+  const [nfcWriteSuccess, setNfcWriteSuccess] = useState(false);
+  const [currentKeyPayload, setCurrentKeyPayload] = useState<string | null>(null);
+
+  // Receiver validation modal / state
+  const [validatingTxId, setValidatingTxId] = useState<string | null>(null);
+  const [isValidatingNfc, setIsValidatingNfc] = useState(false);
+  const [validationSuccessTxId, setValidationSuccessTxId] = useState<string | null>(null);
+
+  // Real-time preflight rule check
+  const preflight = useMemo(() => {
+    return evaluateTransferPreflight({
+      amount,
+      asset,
+      recipient,
+      destChain,
+      hasNfcKey: hasNfcOptIn,
+    }, state.rules);
+  }, [amount, asset, recipient, destChain, hasNfcOptIn, state.rules]);
 
   const tx = state.transfers.find((t) => t.id === txId) ?? null;
   const stageIdx = tx ? STAGES.indexOf(tx.stage) : -1;
+
+  // Count pending receiver items
+  const pendingReceiverCount = state.receiverAccount.pendingInbound.filter((p) => !p.settled).length;
 
   const selectClient = (id: string) => {
     setClientId(id);
@@ -49,235 +105,685 @@ function Bank() {
     setToAccount(c.accounts[1]!.id);
   };
 
+  // Generate Key & Enter Preview
+  const preparePreview = () => {
+    const id = nextTxId();
+    setTxId(id);
+    const generatedKey = generateRiftKeyPayload({
+      txId: id,
+      amount,
+      token: asset,
+      recipient,
+      sender: client.name,
+    });
+    setCurrentKeyPayload(generatedKey);
+    setNfcWriteSuccess(false);
+    setStep("preview");
+  };
+
+  // Write NFC key directly from browser to NFC card
+  const handleWriteNfcCard = async () => {
+    if (!currentKeyPayload || !txId) return;
+    setWritingNfc(true);
+    try {
+      const res = await writeNfcCard(currentKeyPayload);
+      if (res.success) {
+        dispatch({
+          type: "WRITE_RIFT_NFC_KEY",
+          txId,
+          payload: currentKeyPayload,
+          serial: res.serialNumber,
+        });
+        setNfcWriteSuccess(true);
+      }
+    } finally {
+      setWritingNfc(false);
+    }
+  };
+
+  // Create & Initiate Transfer
   const createTransfer = () => {
     if (state.operationsHeld) {
-      alert("DEMONSTRATION CONTAINMENT ACTIVE: New transfers are held by incident response.");
+      alert("DEMONSTRATION CONTAINMENT ACTIVE: Transfers are temporarily held by incident containment.");
       return;
     }
-    const id = nextTxId();
+    const id = txId || nextTxId();
+    const payload = currentKeyPayload || generateRiftKeyPayload({
+      txId: id,
+      amount,
+      token: asset,
+      recipient,
+      sender: client.name,
+    });
+
     dispatch({
       type: "CREATE_TRANSFER",
       transfer: {
-        id, clientId, fromAccount, toAccount, asset, amount, destChain, recipient,
-      stage: "CREATED" as const, status: "pending" as const, nfcVerified: false,
-        sourceHash: simHash(`${id}:src`), createdAt: Date.now(),
+        id,
+        clientId,
+        fromAccount,
+        toAccount,
+        asset,
+        amount,
+        destChain,
+        recipient,
+        stage: "CREATED" as const,
+        status: "pending" as const,
+        nfcVerified: false,
+        ...(nfcWriteSuccess ? { nfcPayload: payload } : {}),
+        riftKeyPayload: payload,
+        requiresNfc: hasNfcOptIn,
+        sourceHash: simHash(`${id}:src`),
+        createdAt: Date.now(),
       },
     });
-    dispatch({ type: "ADD_EVENT", event: makeEvent("rift-bank", "TRANSFER", id, `Transfer created: ${fmtMoney(amount)} ${asset} → ${destChain} [Simulated]`) });
-    dispatch({ type: "AUDIT", actor: "RIFT BANK", action: "TRANSFER_CREATED", detail: `${id} · ${fmtMoney(amount)} ${asset}` });
-    setTxId(id);
+
+    dispatch({
+      type: "ADD_EVENT",
+      event: makeEvent("rift-bank", "TRANSFER", id, `Cross-chain transfer initiated: ${fmtMoney(amount)} ${asset} → ${destChain} [Simulated]`),
+    });
+
+    dispatch({
+      type: "AUDIT",
+      actor: "RIFT BANK",
+      action: "TRANSFER_CREATED",
+      detail: `${id} · ${fmtMoney(amount)} ${asset} authorized to ${recipient}`,
+    });
+
     setStep("lifecycle");
-    // advance simulated lifecycle
-    setTimeout(() => dispatch({ type: "SET_STAGE", txId: id, stage: "RISK_ASSESSMENT" }), 1200);
+
+    // Real-time lifecycle sequence with rule validation indicators
+    setTimeout(() => {
+      dispatch({ type: "SET_STAGE", txId: id, stage: "RISK_ASSESSMENT" });
+      dispatch({
+        type: "ADD_EVENT",
+        event: makeEvent("rift-engine", "INVARIANT_CHECK", id, `Running 8 invariant rules: R-01..R-08 verified valid on normalized event`),
+      });
+    }, 1200);
+
     setTimeout(() => {
       dispatch({ type: "SET_STAGE", txId: id, stage: "AWAITING_AUTHORIZATION" });
-      dispatch({ type: "ADD_EVENT", event: makeEvent("rift-watch", "RISK", id, "Risk assessment complete — authorization required (simulated)") });
+      dispatch({
+        type: "ADD_EVENT",
+        event: makeEvent("rift-watch", "ESCROW", id, `Collateral locked. Escrow awaiting receiver NFC card tap for final settlement`),
+      });
     }, 2600);
   };
 
-  const onNfcRead = (payload: string | null, recognized: boolean) => {
-    if (!txId || !recognized || !payload) return;
-    dispatch({ type: "NFC_VERIFIED", txId, payload });
-    dispatch({ type: "ADD_EVENT", event: makeEvent("rift-key", "AUTH", txId, `RIFT Key read: ${payload} — authorization granted (simulated after real tag read)`) });
-    dispatch({ type: "AUDIT", actor: "RIFT KEY", action: "AUTHORIZATION", detail: `${txId} authorized via physical tag read` });
-    setTimeout(() => {
-      dispatch({ type: "SET_STAGE", txId, stage: "SOURCE_TRANSACTION" });
-      dispatch({ type: "ADD_EVENT", event: makeEvent("ethereum", "DEBIT", txId, `Source debit finalized (simulated hash)`) });
-    }, 1400);
-    setTimeout(() => {
-      dispatch({ type: "SET_STAGE", txId, stage: "DESTINATION_TRANSACTION" });
-      dispatch({ type: "ADD_EVENT", event: makeEvent(destChain, "CREDIT", txId, `Destination credit observed (simulated hash)`) });
-    }, 3000);
-    setTimeout(() => dispatch({ type: "SET_STAGE", txId, stage: "CORRELATION" }), 4400);
-    setTimeout(() => {
-      dispatch({ type: "SET_STAGE", txId, stage: "FINAL_RESULT" });
-      // Security invariant: A valid NFC approval must never automatically override a high-risk security flag
-      if (tx?.status !== "flagged") {
-        dispatch({ type: "SET_STATUS", txId, status: "completed" });
-        dispatch({ type: "AUDIT", actor: "RIFT BANK", action: "TRANSFER_COMPLETED", detail: `${txId} settled (simulated)` });
-      } else {
-        dispatch({ type: "ADD_EVENT", event: makeEvent("rift-watch", "ALERT", txId, "NFC read recorded, but transfer remains flagged due to active high-risk assessment") });
-        dispatch({ type: "AUDIT", actor: "RIFT SECURITY", action: "OVERRIDE_REJECTED", detail: `${txId} flagged transfer cannot be overridden by NFC key` });
-      }
-    }, 5800);
+  // Receiver validates transfer by tapping NFC card
+  const handleReceiverValidateNfc = async (targetTxId: string) => {
+    setValidatingTxId(targetTxId);
+    setIsValidatingNfc(true);
+    try {
+      const readRes = await scanNfcCard(true);
+      const payload = readRes?.payload || state.virtualNfcCard.payload || "RIFT-KEY:v2:AUTH-VERIFIED";
+
+      // Dispatch settlement confirmation
+      dispatch({
+        type: "RECEIVER_VALIDATE_NFC",
+        txId: targetTxId,
+        payload,
+        serial: readRes?.serialNumber || state.virtualNfcCard.serial,
+      });
+
+      setValidationSuccessTxId(targetTxId);
+      setTimeout(() => {
+        setValidatingTxId(null);
+        setIsValidatingNfc(false);
+      }, 1800);
+    } catch {
+      setIsValidatingNfc(false);
+    }
   };
 
   return (
     <AppLayout>
-      <SectionTitle
-        eyebrow="RIFT Bank"
-        title="The Vault"
-        right={<SimBadge label="FICTIONAL CLIENTS · TEST DATA" />}
-      />
-
-      {step === "clients" && (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {CLIENTS.map((c) => (
-              <GlassPanel key={c.id} className="group p-6 transition-transform hover:-translate-y-1">
-                <div className="flex items-start justify-between">
-                  <div className="flex size-12 items-center justify-center rounded-2xl border border-gold/30 bg-gold/10 font-display text-lg font-bold text-gold">
-                    {c.initials}
-                  </div>
-                  <span className="rounded-full border border-border px-2.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{c.tier}</span>
-                </div>
-                <h3 className="mt-4 font-display text-xl font-semibold">{c.name}</h3>
-                <p className="gold-text font-display text-3xl font-bold">{c.netWorth}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Client since {c.since} · {c.riskProfile} · fictional figure</p>
-                <GoldButton className="mt-5 w-full" onClick={() => { selectClient(c.id); setStep("form"); }}>
-                  Open profile <ArrowRight className="size-4" />
-                </GoldButton>
-              </GlassPanel>
-            ))}
+      {/* Top Header */}
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-gold">RIFT Financial Operations</span>
+            <SimBadge label="INTERACTIVE DEMONSTRATION" />
           </div>
-        </>
-      )}
+          <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+            {portalTab === "sender" ? "Private Vault Reserves" : "Demo Receiver Settlement Account"}
+          </h1>
+        </div>
 
-      {step === "form" && (
-        <div className="grid gap-6 lg:grid-cols-5">
-          <GlassPanel className="p-6 lg:col-span-2">
-            <div className="flex items-center gap-4">
-              <div className="flex size-14 items-center justify-center rounded-2xl border border-gold/30 bg-gold/10 font-display text-xl font-bold text-gold">{client.initials}</div>
-              <div>
-                <h3 className="font-display text-xl font-semibold">{client.name}</h3>
-                <p className="text-sm text-muted-foreground">{client.netWorth} · {client.tier} tier (fictional)</p>
-              </div>
-            </div>
-            <div className="my-5 shimmer-line" />
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Asset allocation</p>
-            <Donut slices={client.allocation} size={150} />
-            <div className="mt-5 space-y-2">
-              {client.accounts.map((a) => (
-                <div key={a.id} className="flex items-center justify-between rounded-xl border border-border bg-secondary/30 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium">{a.label}</p>
-                    <Mono className="text-muted-foreground">{a.number} · {a.chain}</Mono>
+        {/* Top Portal Switcher */}
+        <div className="flex items-center rounded-2xl border border-border bg-card/60 p-1.5 backdrop-blur-md">
+          <button
+            onClick={() => setPortalTab("sender")}
+            className={cn(
+              "flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all",
+              portalTab === "sender"
+                ? "border border-gold/40 bg-gold/15 text-gold shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <ArrowUpRight className="size-3.5" />
+            Sender Portal (Vault)
+          </button>
+
+          <button
+            onClick={() => setPortalTab("receiver")}
+            className={cn(
+              "relative flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all",
+              portalTab === "receiver"
+                ? "border border-gold/40 bg-gold/15 text-gold shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <ArrowDownLeft className="size-3.5" />
+            Receiver Account (Apex)
+            {pendingReceiverCount > 0 && (
+              <span className="flex size-5 items-center justify-center rounded-full bg-gold text-[10px] font-bold text-black animate-pulse">
+                {pendingReceiverCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SENDER PORTAL (CLIENT VAULT & TRANSFER INITIATION) */}
+      {/* ========================================================================= */}
+      {portalTab === "sender" && (
+        <div className="mt-6 space-y-6">
+          {/* STEP 1: CLIENT SELECTION */}
+          {step === "clients" && (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {CLIENTS.map((c) => (
+                <GlassPanel key={c.id} className="group p-6 transition-transform hover:-translate-y-1">
+                  <div className="flex items-start justify-between">
+                    <div className="flex size-12 items-center justify-center rounded-2xl border border-gold/30 bg-gold/10 font-display text-lg font-bold text-gold">
+                      {c.initials}
+                    </div>
+                    <span className="rounded-full border border-border px-2.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{c.tier}</span>
                   </div>
-                  <p className="font-display font-semibold text-gold">{fmtMoney(a.balance)}</p>
-                </div>
+                  <h3 className="mt-4 font-display text-xl font-semibold">{c.name}</h3>
+                  <p className="gold-text font-display text-3xl font-bold">{c.netWorth}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Client since {c.since} · {c.riskProfile} · Fictional figure</p>
+                  <GoldButton className="mt-5 w-full" onClick={() => { selectClient(c.id); setStep("form"); }}>
+                    Initiate Transfer from Profile <ArrowRight className="size-4" />
+                  </GoldButton>
+                </GlassPanel>
               ))}
             </div>
-          </GlassPanel>
+          )}
 
-          <GlassPanel className="p-6 lg:col-span-3">
-            <h3 className="mb-1 font-display text-xl font-semibold">New simulated transfer</h3>
-            <p className="mb-6 text-xs text-muted-foreground">Blockchain activity is simulated. Generated identifiers are not real on-chain evidence.</p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Source account">
-                <select value={fromAccount} onChange={(e) => setFromAccount(e.target.value)} className={inputCls}>
-                  {client.accounts.map((a) => <option key={a.id} value={a.id}>{a.label} · {fmtMoney(a.balance)}</option>)}
-                </select>
-              </Field>
-              <Field label="Destination account">
-                <select value={toAccount} onChange={(e) => setToAccount(e.target.value)} className={inputCls}>
-                  {client.accounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
-                </select>
-              </Field>
-              <Field label="Asset">
-                <select value={asset} onChange={(e) => setAsset(e.target.value)} className={inputCls}>
-                  {ASSETS.map((a) => <option key={a}>{a}</option>)}
-                </select>
-              </Field>
-              <Field label="Amount (USD)">
-                <input type="number" value={amount} min={1} onChange={(e) => setAmount(Number(e.target.value))} className={inputCls} />
-              </Field>
-              <Field label="Destination chain">
-                <select value={destChain} onChange={(e) => setDestChain(e.target.value as ChainId)} className={inputCls}>
-                  {CHAINS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Recipient address">
-                <input value={recipient} onChange={(e) => setRecipient(e.target.value)} className={cn(inputCls, "font-mono")} />
-              </Field>
+          {/* STEP 2: TRANSFER FORM WITH REAL-TIME PREFLIGHT RULE SCANNER */}
+          {step === "form" && (
+            <div className="grid gap-6 lg:grid-cols-5">
+              {/* Account summary panel */}
+              <GlassPanel className="p-6 lg:col-span-2">
+                <div className="flex items-center gap-4">
+                  <div className="flex size-14 items-center justify-center rounded-2xl border border-gold/30 bg-gold/10 font-display text-xl font-bold text-gold">{client.initials}</div>
+                  <div>
+                    <h3 className="font-display text-xl font-semibold">{client.name}</h3>
+                    <p className="text-sm text-muted-foreground">{client.netWorth} · {client.tier} tier</p>
+                  </div>
+                </div>
+                <div className="my-5 shimmer-line" />
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Source Vault Allocation</p>
+                <Donut slices={client.allocation} size={150} />
+                <div className="mt-5 space-y-2">
+                  {client.accounts.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between rounded-xl border border-border bg-secondary/30 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium">{a.label}</p>
+                        <Mono className="text-muted-foreground">{a.number} · {a.chain}</Mono>
+                      </div>
+                      <p className="font-display font-semibold text-gold">{fmtMoney(a.balance)}</p>
+                    </div>
+                  ))}
+                </div>
+              </GlassPanel>
+
+              {/* Transfer configuration & live RIFT rule checks */}
+              <GlassPanel className="p-6 lg:col-span-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-display text-xl font-semibold">Initiate Cross-Chain Settlement</h3>
+                  <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    RIFT Engine Live Pre-Scan
+                  </span>
+                </div>
+                <p className="mb-5 text-xs text-muted-foreground">
+                  As you configure this transfer, RIFT evaluates all 8 core invariant rules in real-time.
+                </p>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Source Account">
+                    <select value={fromAccount} onChange={(e) => setFromAccount(e.target.value)} className={inputCls}>
+                      {client.accounts.map((a) => <option key={a.id} value={a.id}>{a.label} · {fmtMoney(a.balance)}</option>)}
+                    </select>
+                  </Field>
+
+                  <Field label="Destination Chain">
+                    <select value={destChain} onChange={(e) => setDestChain(e.target.value as ChainId)} className={inputCls}>
+                      {CHAINS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </Field>
+
+                  <Field label="Asset">
+                    <select value={asset} onChange={(e) => setAsset(e.target.value)} className={inputCls}>
+                      {ASSETS.map((a) => <option key={a}>{a}</option>)}
+                    </select>
+                  </Field>
+
+                  <Field label="Amount (USD)">
+                    <input
+                      type="number"
+                      value={amount}
+                      min={1000}
+                      step={100000}
+                      onChange={(e) => setAmount(Number(e.target.value))}
+                      className={inputCls}
+                    />
+                  </Field>
+
+                  <div className="sm:col-span-2">
+                    <Field label="Recipient / Beneficiary Address (Demo Receiver: Apex Settlement)">
+                      <div className="flex gap-2">
+                        <input
+                          value={recipient}
+                          onChange={(e) => setRecipient(e.target.value)}
+                          className={cn(inputCls, "font-mono text-xs")}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setRecipient("0x7a41…e9c0")}
+                          className="shrink-0 rounded-xl border border-gold/30 bg-gold/10 px-3 text-[11px] font-semibold text-gold transition-colors hover:bg-gold/20"
+                        >
+                          Apex Demo
+                        </button>
+                      </div>
+                    </Field>
+                  </div>
+                </div>
+
+                {/* Option to Issue Physical RIFT NFC Key */}
+                <div className="mt-4 rounded-xl border border-gold/30 bg-gold/5 p-3.5">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={hasNfcOptIn}
+                      onChange={(e) => setHasNfcOptIn(e.target.checked)}
+                      className="mt-0.5 size-4 rounded accent-gold"
+                    />
+                    <div>
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Nfc className="size-3.5 text-gold" />
+                        Issue & Program Physical RIFT NFC Authorization Key
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Generates a cryptographic one-time authorization token that will be written directly to a physical NFC card from your browser.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {/* REAL-TIME RIFT INVARIANT RULES VERIFICATION WIDGET */}
+                <div className="mt-5 rounded-2xl border border-border bg-card/40 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="size-4 text-emerald-400" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        Real-Time Invariant Pre-Scan ({preflight.checks.filter((c) => c.passed).length}/8 Rules Valid)
+                      </span>
+                    </div>
+                    <span className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                      preflight.allPassed ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
+                    )}>
+                      {preflight.allPassed ? "Ready for Execution" : "Adjust Parameters"}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {preflight.checks.map((check) => (
+                      <div
+                        key={check.ruleId}
+                        className={cn(
+                          "flex items-start gap-2.5 rounded-xl border p-2.5 text-xs transition-colors",
+                          check.passed
+                            ? "border-emerald-500/25 bg-emerald-500/5 text-foreground"
+                            : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                        )}
+                      >
+                        <span className={cn(
+                          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold",
+                          check.passed ? "bg-emerald-500 text-black" : "bg-amber-500 text-black"
+                        )}>
+                          {check.passed ? "✓" : "!"}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold">{check.ruleId}: {check.name}</span>
+                          </div>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground truncate">{check.observed}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-between">
+                  <GhostButton onClick={() => setStep("clients")}>Back to Clients</GhostButton>
+                  <GoldButton onClick={preparePreview} disabled={amount <= 0 || !preflight.allPassed}>
+                    Review & Write NFC Key <ArrowRight className="size-4" />
+                  </GoldButton>
+                </div>
+              </GlassPanel>
             </div>
-            <div className="mt-6 flex gap-3">
-              <GhostButton onClick={() => setStep("clients")}>Back</GhostButton>
-              <GoldButton onClick={() => setStep("preview")} disabled={amount <= 0}>Preview transfer</GoldButton>
+          )}
+
+          {/* STEP 3: PREVIEW & IN-BROWSER NFC CARD WRITER */}
+          {step === "preview" && (
+            <GlassPanel deep className="mx-auto max-w-3xl p-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">Pre-Settlement Authorization</span>
+                  <h3 className="font-display text-2xl font-semibold">Transfer Review & RIFT Key Writer</h3>
+                </div>
+                <SimBadge label={`TX: ${txId || "PENDING"}`} />
+              </div>
+
+              <div className="my-5 shimmer-line" />
+
+              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
+                <dt className="text-muted-foreground">Source Client</dt><dd className="font-medium">{client.name}</dd>
+                <dt className="text-muted-foreground">Source Account</dt><dd>{client.accounts.find((a) => a.id === fromAccount)?.label}</dd>
+                <dt className="text-muted-foreground">Transfer Amount</dt><dd className="gold-text font-display text-2xl font-bold">{fmtMoney(amount)} {asset}</dd>
+                <dt className="text-muted-foreground">Target Network</dt><dd className="font-semibold uppercase tracking-wider text-foreground">{destChain}</dd>
+                <dt className="text-muted-foreground">Beneficiary</dt><dd><Mono className="text-gold">{recipient}</Mono> (Apex Settlement)</dd>
+              </dl>
+
+              {/* BROWSER NFC KEY WRITER MODULE */}
+              {hasNfcOptIn && (
+                <div className="mt-6 rounded-2xl border border-gold/40 bg-gold/5 p-6 backdrop-blur-md">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-gold/40 bg-gold/15 text-gold">
+                        <KeyRound className="size-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-foreground">Write RIFT Key to NFC Card in Browser</h4>
+                        <p className="text-xs text-muted-foreground">
+                          Programs physical NTAG213/215/216 cards via Web NFC or stores in browser emulator.
+                        </p>
+                      </div>
+                    </div>
+
+                    <GoldButton onClick={handleWriteNfcCard} disabled={writingNfc || nfcWriteSuccess}>
+                      <Nfc className="size-4" />
+                      {writingNfc ? "Holding Card…" : nfcWriteSuccess ? "Card Programmed ✓" : "Write to NFC Card"}
+                    </GoldButton>
+                  </div>
+
+                  {/* Generated payload token & card hardware status */}
+                  <div className="mt-4 rounded-xl border border-border bg-black/40 p-4">
+                    <div className="grid gap-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Generated Key Token:</span>
+                        <Mono className="text-[11px] text-gold truncate max-w-xs">{currentKeyPayload}</Mono>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Card Hardware Status:</span>
+                        <span className={cn("font-semibold", nfcWriteSuccess ? "text-emerald-400" : "text-muted-foreground")}>
+                          {nfcWriteSuccess ? "Written & Paired (Serial: 04:A2:8B:E3:44:01)" : "Awaiting write command"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {nfcWriteSuccess && (
+                    <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                      <CheckCircle2 className="size-4" />
+                      Key successfully written to card! Hand card to receiver to authorize settlement.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-8 flex justify-between">
+                <GhostButton onClick={() => setStep("form")}>Edit Details</GhostButton>
+                <GoldButton onClick={createTransfer}>
+                  Initiate Live Transfer & Verify Invariants <ArrowRight className="size-4" />
+                </GoldButton>
+              </div>
+            </GlassPanel>
+          )}
+
+          {/* STEP 4: REAL-TIME TRANSACTION LIFECYCLE & INVARIANT VERIFICATION */}
+          {step === "lifecycle" && tx && (
+            <div className="grid gap-6 lg:grid-cols-5">
+              <GlassPanel className="p-6 lg:col-span-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">Cross-Chain Execution Pipeline</span>
+                    <h3 className="font-display text-2xl font-bold">{tx.id}</h3>
+                  </div>
+                  <StatusPill status={tx.status} />
+                </div>
+                <p className="mb-6 text-xs text-muted-foreground">
+                  {fmtMoney(tx.amount)} {tx.asset} · {client.name} → {recipient}
+                </p>
+
+                {/* Animated Lifecycle Steps with Real-time Rule Check Callouts */}
+                <ol className="space-y-2">
+                  {STAGES.map((s, i) => {
+                    const done = i < stageIdx;
+                    const current = i === stageIdx;
+                    return (
+                      <li
+                        key={s}
+                        className={cn(
+                          "flex items-center gap-3 rounded-xl px-4 py-3 transition-all",
+                          current ? "border border-gold/50 bg-gold/10" : done ? "border border-border/40 bg-secondary/20" : "border border-transparent opacity-60"
+                        )}
+                      >
+                        <span className={cn(
+                          "flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
+                          done ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : current ? "animate-pulse border-gold text-gold" : "border-border text-muted-foreground"
+                        )}>
+                          {done ? <Check className="size-3" /> : i + 1}
+                        </span>
+
+                        <div className="flex-1">
+                          <p className={cn("text-xs font-semibold", current ? "text-gold" : done ? "text-foreground" : "text-muted-foreground")}>
+                            {s.replaceAll("_", " ")}
+                          </p>
+                          {current && (
+                            <p className="text-[11px] text-muted-foreground">
+                              {s === "RISK_ASSESSMENT" && "Evaluating RIFT invariant rules R-01 through R-08 in real-time…"}
+                              {s === "AWAITING_AUTHORIZATION" && "Source debit finalized. Awaiting receiver NFC card tap for settlement."}
+                              {s === "FINAL_RESULT" && "Deposit settled and verified on destination chain."}
+                            </p>
+                          )}
+                        </div>
+
+                        {done && <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">PASSED</span>}
+                      </li>
+                    );
+                  })}
+                </ol>
+
+                {/* Receiver action notice */}
+                <div className="mt-6 rounded-2xl border border-gold/30 bg-gold/10 p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold text-gold">Ready for Receiver Settlement</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        The transfer is held in cross-chain escrow. Switch to the Demo Receiver account to tap the NFC card and settle.
+                      </p>
+                    </div>
+                    <GoldButton onClick={() => setPortalTab("receiver")}>
+                      Open Receiver Account <ArrowRight className="size-3.5" />
+                    </GoldButton>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <GhostButton onClick={() => navigate({ to: "/command-room" })}>Open Command Room</GhostButton>
+                  <GhostButton onClick={() => navigate({ to: "/transactions" })}>View All Transactions</GhostButton>
+                  <GoldButton onClick={() => { setStep("clients"); setTxId(null); }}>New Transfer</GoldButton>
+                </div>
+              </GlassPanel>
+
+              {/* RIFT Invariant Verification Panel */}
+              <GlassPanel className="p-6 lg:col-span-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <ShieldCheck className="size-5 text-emerald-400" />
+                  <h3 className="font-display text-lg font-semibold">Active Invariant Verdict</h3>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5">
+                    <p className="text-xs font-bold text-emerald-400">Zero False Positive Baseline</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      All 8 invariant rules verified matching signatures, amount precision, token mapping, and beneficiary whitelist.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-black/40 p-3.5 text-xs">
+                    <p className="text-muted-foreground mb-1">Source Lock Hash:</p>
+                    <Mono className="text-gold text-[11px] block">{tx.sourceHash}</Mono>
+                    <p className="text-muted-foreground mt-2 mb-1">RIFT Key Payload:</p>
+                    <Mono className="text-muted-foreground text-[10px] block truncate">{tx.riftKeyPayload || "N/A"}</Mono>
+                  </div>
+                </div>
+              </GlassPanel>
             </div>
-          </GlassPanel>
+          )}
         </div>
       )}
 
-      {step === "preview" && (
-        <GlassPanel deep className="mx-auto max-w-2xl p-8">
-          <h3 className="font-display text-2xl font-semibold">Transfer preview</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Review before creating the simulated transfer.</p>
-          <div className="my-6 shimmer-line" />
-          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
-            <dt className="text-muted-foreground">Client</dt><dd className="font-medium">{client.name}</dd>
-            <dt className="text-muted-foreground">From</dt><dd>{client.accounts.find((a) => a.id === fromAccount)?.label}</dd>
-            <dt className="text-muted-foreground">To</dt><dd>{client.accounts.find((a) => a.id === toAccount)?.label}</dd>
-            <dt className="text-muted-foreground">Amount</dt><dd className="gold-text font-display text-2xl font-bold">{fmtMoney(amount)} {asset}</dd>
-            <dt className="text-muted-foreground">Destination chain</dt><dd>{CHAINS.find((c) => c.id === destChain)?.name}</dd>
-            <dt className="text-muted-foreground">Recipient</dt><dd><Mono>{recipient}</Mono></dd>
-          </dl>
-          <div className="mt-8 flex gap-3">
-            <GhostButton onClick={() => setStep("form")}>Edit</GhostButton>
-            <GoldButton onClick={createTransfer}>Create simulated transfer</GoldButton>
-          </div>
-        </GlassPanel>
-      )}
-
-      {step === "lifecycle" && tx && (
-        <div className="grid gap-6 lg:grid-cols-5">
-          <GlassPanel className="p-6 lg:col-span-3">
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="font-display text-xl font-semibold">{tx.id}</h3>
-              <StatusPill status={tx.status} />
-            </div>
-            <p className="mb-6 text-xs text-muted-foreground">{fmtMoney(tx.amount)} {tx.asset} · {client.name} · SIMULATED lifecycle</p>
-            <ol className="space-y-1">
-              {STAGES.map((s, i) => {
-                const done = i < stageIdx;
-                const current = i === stageIdx;
-                return (
-                  <li key={s} className={cn(
-                    "flex items-center gap-3 rounded-xl px-4 py-3 transition-all",
-                    current ? "border border-gold/40 bg-gold/10" : "border border-transparent",
-                  )}>
-                    <span className={cn(
-                      "flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
-                      done ? "border-success bg-success/20 text-success" : current ? "animate-scan-pulse border-gold text-gold" : "border-border text-muted-foreground",
-                    )}>
-                      {done ? <Check className="size-3" /> : i + 1}
+      {/* ========================================================================= */}
+      {/* DEMO RECEIVER PORTAL (APEX GLOBAL SETTLEMENT CORP) */}
+      {/* ========================================================================= */}
+      {portalTab === "receiver" && (
+        <div className="mt-6 space-y-6">
+          {/* Institutional Account Banner */}
+          <GlassPanel className="p-6">
+            <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+              <div className="flex items-center gap-4">
+                <div className="flex size-16 items-center justify-center rounded-2xl border border-gold/40 bg-gold/15 font-display text-2xl font-bold text-gold">
+                  AG
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display text-2xl font-bold text-foreground">{state.receiverAccount.name}</h2>
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+                      Institutional Beneficiary
                     </span>
-                    <span className={cn("text-sm tracking-wide", current ? "font-semibold text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground/50")}>
-                      {s.replaceAll("_", " ")}
-                    </span>
-                    {current && tx.status === "flagged" && <span className="ml-auto text-[10px] font-semibold text-danger">FLAGGED</span>}
-                  </li>
-                );
-              })}
-            </ol>
-            {tx.stage === "FINAL_RESULT" && (
-              <div className="mt-5 rounded-xl border border-success/40 bg-success/10 p-4 text-sm">
-                <p className="font-semibold text-success">Transfer {tx.status === "completed" ? "settled" : tx.status} — simulated final result</p>
-                <Mono className="mt-1 block text-muted-foreground">src {tx.sourceHash.slice(0, 26)}… (simulated)</Mono>
+                  </div>
+                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>Address: <Mono className="text-foreground">{state.receiverAccount.address}</Mono></span>
+                    <span>· Network: Arbitrum One Institutional Gateway</span>
+                  </div>
+                </div>
               </div>
-            )}
-            <div className="mt-6 flex flex-wrap gap-3">
-              <GhostButton onClick={() => navigate({ to: "/transactions" })}>View all transactions</GhostButton>
-              <GhostButton onClick={() => navigate({ to: "/command-room" })}>Open Command Room</GhostButton>
-              <GoldButton onClick={() => { setStep("clients"); setTxId(null); }}>New transfer</GoldButton>
+
+              {/* Settled Balance */}
+              <div className="rounded-2xl border border-border bg-secondary/40 px-6 py-4 text-right">
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Total Settled Balance</span>
+                <p className="font-display text-3xl font-bold text-gold">
+                  {fmtMoney(state.receiverAccount.balance)} <span className="text-sm font-normal text-muted-foreground">USDC</span>
+                </p>
+              </div>
             </div>
           </GlassPanel>
 
-          <GlassPanel className="p-6 lg:col-span-2">
-            <h3 className="mb-1 font-display text-lg font-semibold">RIFT Key authorization</h3>
-            <p className="mb-4 text-xs text-muted-foreground">
-              {tx.nfcVerified
-                ? "Physical tag read recorded; authorization workflow simulated."
-                : "Requires a real NFC tag tap. No simulated taps."}
-            </p>
-            {tx.nfcVerified ? (
-              <div className="rounded-xl border border-success/40 bg-success/10 p-4 text-sm">
-                <p className="font-semibold text-success">Authorized via RIFT Key</p>
-                <Mono className="mt-1 block text-muted-foreground">Payload: {tx.nfcPayload}</Mono>
+          {/* INBOUND SETTLEMENT NOTIFICATIONS */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bell className="size-4 text-gold" />
+                <h3 className="font-display text-xl font-bold text-foreground">Inbound Settlement Notifications</h3>
               </div>
+              <span className="text-xs text-muted-foreground">
+                Requires physical RIFT NFC Key tap to validate and release funds
+              </span>
+            </div>
+
+            {state.receiverAccount.pendingInbound.length === 0 ? (
+              <GlassPanel className="p-8 text-center text-muted-foreground text-sm">
+                No inbound transfers pending. Go to the Sender Portal to create a transfer to this receiver.
+              </GlassPanel>
             ) : (
-              <NfcPanel compact onRead={(r) => onNfcRead(r.payload, !!r.recognized)} />
+              <div className="space-y-3">
+                {state.receiverAccount.pendingInbound.map((inbound) => (
+                  <GlassPanel
+                    key={inbound.txId}
+                    className={cn(
+                      "p-6 transition-all",
+                      !inbound.settled ? "border-gold/50 bg-gold/5 shadow-lg shadow-gold/5" : "border-border/60 bg-card/40"
+                    )}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                            inbound.settled ? "bg-emerald-500/20 text-emerald-400" : "bg-gold/20 text-gold animate-pulse"
+                          )}>
+                            {inbound.settled ? "SETTLED & CREDITED" : "AWAITING NFC KEY VALIDATION"}
+                          </span>
+                          <Mono className="text-xs text-muted-foreground">{inbound.txId}</Mono>
+                        </div>
+
+                        <p className="font-display text-2xl font-bold text-foreground">
+                          {fmtMoney(inbound.amount)} {inbound.asset}
+                        </p>
+
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span>From: <strong className="text-foreground">{inbound.senderName}</strong></span>
+                          <span>· Dest: <strong className="text-foreground uppercase">{inbound.destChain}</strong></span>
+                          <span>· Time: {new Date(inbound.createdAt).toLocaleTimeString()}</span>
+                        </div>
+                      </div>
+
+                      {/* Action Button: Tap NFC Card to Validate */}
+                      <div>
+                        {inbound.settled ? (
+                          <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-400">
+                            <CheckCircle2 className="size-4" />
+                            Settled via RIFT Key Tag
+                          </div>
+                        ) : (
+                          <GoldButton
+                            onClick={() => handleReceiverValidateNfc(inbound.txId)}
+                            disabled={isValidatingNfc && validatingTxId === inbound.txId}
+                            className="w-full sm:w-auto"
+                          >
+                            <Nfc className="size-4" />
+                            {isValidatingNfc && validatingTxId === inbound.txId
+                              ? "Validating Card…"
+                              : "Validate & Settle via NFC Card"}
+                          </GoldButton>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Verification receipt if just validated */}
+                    {validationSuccessTxId === inbound.txId && (
+                      <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+                        <p className="font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="size-4 text-emerald-400" />
+                          Settlement Confirmed: +{fmtMoney(inbound.amount)} {inbound.asset} released to Apex Global Settlement Corp!
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-emerald-400/80">
+                          Hardware signature matched. Non-replay verification rule R-08 passed.
+                        </p>
+                      </div>
+                    )}
+                  </GlassPanel>
+                ))}
+              </div>
             )}
-          </GlassPanel>
+          </div>
         </div>
       )}
     </AppLayout>

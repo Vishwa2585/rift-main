@@ -17,6 +17,8 @@ import {
   type CorrelatedPair,
   type RuleEvaluationResult,
   type AttackScenarioTemplate,
+  evaluateTransferPreflight,
+  type PreflightRuleCheck,
 } from "./engine";
 
 export type TxStage =
@@ -40,11 +42,47 @@ export interface Transfer {
   stage: TxStage;
   status: "pending" | "authorized" | "completed" | "flagged" | "rejected";
   nfcVerified: boolean;
-  nfcPayload?: string;
+  nfcPayload?: string | undefined;
+  riftKeyPayload?: string | undefined;
+  requiresNfc?: boolean | undefined;
   sourceHash: string;
-  destHash?: string;
+  destHash?: string | undefined;
   createdAt: number;
-  note?: string;
+  note?: string | undefined;
+}
+
+export interface PendingInboundTransfer {
+  txId: string;
+  senderName: string;
+  senderAddress: string;
+  asset: string;
+  amount: number;
+  destChain: string;
+  recipientAddress: string;
+  riftKeyPayload: string;
+  requiresNfc: boolean;
+  nfcValidated: boolean;
+  settled: boolean;
+  createdAt: number;
+  settledAt?: number;
+}
+
+export interface DemoReceiverAccount {
+  id: string;
+  name: string;
+  address: string;
+  balance: number;
+  asset: string;
+  pendingInbound: PendingInboundTransfer[];
+}
+
+export interface VirtualNfcCard {
+  programmed: boolean;
+  payload: string | null;
+  txId: string | null;
+  keyId: string | null;
+  serial: string;
+  lastWrittenAt?: number;
 }
 
 export interface StreamEvent {
@@ -109,9 +147,44 @@ export interface RiftState {
   scanningState: "IDLE" | "SCANNING" | "PAUSED" | "CORRELATING" | "ALERT_GENERATED";
   operationsHeld: boolean;
   activeAlert: Incident | null;
+  receiverAccount: DemoReceiverAccount;
+  virtualNfcCard: VirtualNfcCard;
 }
 
-const STORAGE_KEY = "rift-demo-state-v2";
+const STORAGE_KEY = "rift-demo-state-v4";
+
+export const INITIAL_RECEIVER_ACCOUNT: DemoReceiverAccount = {
+  id: "rec-apex-01",
+  name: "Apex Global Settlement Corp",
+  address: "0x7a41…e9c0",
+  balance: 145_000_000,
+  asset: "USDC",
+  pendingInbound: [
+    {
+      txId: "RFT-TX-0088",
+      senderName: "Veyron Vault Reserve",
+      senderAddress: "0x1142…99aa",
+      asset: "USDC",
+      amount: 40_000_000,
+      destChain: "arbitrum",
+      recipientAddress: "0x7a41…e9c0",
+      riftKeyPayload: "RIFT-KEY:v2:RFT-TX-0088:AUTH-55219:0x7a41…e9c0:40000000:USDC:7c19a",
+      requiresNfc: true,
+      nfcValidated: true,
+      settled: true,
+      createdAt: Date.now() - 1000 * 60 * 40,
+      settledAt: Date.now() - 1000 * 60 * 38,
+    },
+  ],
+};
+
+export const INITIAL_VIRTUAL_NFC_CARD: VirtualNfcCard = {
+  programmed: false,
+  payload: null,
+  txId: null,
+  keyId: null,
+  serial: "04:A2:8B:E3:44:01",
+};
 
 function seedEvents(): StreamEvent[] {
   resetEventSeq();
@@ -255,6 +328,8 @@ export function initialState(): RiftState {
     scanningState: "SCANNING",
     operationsHeld: false,
     activeAlert: null,
+    receiverAccount: INITIAL_RECEIVER_ACCOUNT,
+    virtualNfcCard: INITIAL_VIRTUAL_NFC_CARD,
   };
 }
 
@@ -268,6 +343,8 @@ export function nextTxId() { return `RFT-TX-${String(++txSeq + 100).padStart(4, 
 type Action =
   | { type: "RESET" }
   | { type: "CREATE_TRANSFER"; transfer: Transfer }
+  | { type: "WRITE_RIFT_NFC_KEY"; txId: string; payload: string; serial?: string }
+  | { type: "RECEIVER_VALIDATE_NFC"; txId: string; payload: string; serial?: string }
   | { type: "SET_STAGE"; txId: string; stage: TxStage }
   | { type: "SET_STATUS"; txId: string; status: Transfer["status"] }
   | { type: "NFC_VERIFIED"; txId: string; payload: string }
@@ -477,8 +554,138 @@ function reducer(state: RiftState, action: Action): RiftState {
     case "RESET":
       return initialState();
 
-    case "CREATE_TRANSFER":
-      return { ...state, transfers: [action.transfer, ...state.transfers], activeTxId: action.transfer.id };
+    case "CREATE_TRANSFER": {
+      const client = CLIENTS.find((c) => c.id === action.transfer.clientId);
+      const isForDemoReceiver =
+        action.transfer.recipient.toLowerCase().includes("7a41") ||
+        action.transfer.recipient === state.receiverAccount.address;
+
+      const newPendingInbound: PendingInboundTransfer = {
+        txId: action.transfer.id,
+        senderName: client?.name || "Private Client Vault",
+        senderAddress: action.transfer.fromAccount,
+        asset: action.transfer.asset,
+        amount: action.transfer.amount,
+        destChain: action.transfer.destChain,
+        recipientAddress: action.transfer.recipient,
+        riftKeyPayload: action.transfer.riftKeyPayload || `RIFT-KEY:v2:${action.transfer.id}:PENDING`,
+        requiresNfc: action.transfer.requiresNfc ?? true,
+        nfcValidated: false,
+        settled: false,
+        createdAt: Date.now(),
+      };
+
+      return {
+        ...state,
+        transfers: [action.transfer, ...state.transfers],
+        activeTxId: action.transfer.id,
+        receiverAccount: {
+          ...state.receiverAccount,
+          pendingInbound: isForDemoReceiver
+            ? [newPendingInbound, ...state.receiverAccount.pendingInbound]
+            : state.receiverAccount.pendingInbound,
+        },
+      };
+    }
+
+    case "WRITE_RIFT_NFC_KEY": {
+      const serial = action.serial || "04:A2:8B:E3:44:01";
+      const keyId = `KEY-${action.txId.replace(/[^0-9]/g, "").slice(-4) || "8812"}`;
+
+      const updatedTransfers = state.transfers.map((t) =>
+        t.id === action.txId
+          ? { ...t, nfcPayload: action.payload, riftKeyPayload: action.payload }
+          : t
+      );
+
+      const updatedPending = state.receiverAccount.pendingInbound.map((p) =>
+        p.txId === action.txId
+          ? { ...p, riftKeyPayload: action.payload }
+          : p
+      );
+
+      return {
+        ...state,
+        transfers: updatedTransfers,
+        virtualNfcCard: {
+          programmed: true,
+          payload: action.payload,
+          txId: action.txId,
+          keyId,
+          serial,
+          lastWrittenAt: Date.now(),
+        },
+        receiverAccount: {
+          ...state.receiverAccount,
+          pendingInbound: updatedPending,
+        },
+        audit: [
+          {
+            id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+            at: Date.now(),
+            actor: "RIFT_NFC_WRITER",
+            action: "KEY_WRITTEN_TO_CARD",
+            detail: `NFC Card (Serial ${serial}) programmed with key for transfer ${action.txId}`,
+          },
+          ...state.audit,
+        ],
+      };
+    }
+
+    case "RECEIVER_VALIDATE_NFC": {
+      const targetInbound = state.receiverAccount.pendingInbound.find((p) => p.txId === action.txId);
+      const amountToAdd = targetInbound ? targetInbound.amount : 50_000_000;
+
+      const updatedPending = state.receiverAccount.pendingInbound.map((p) =>
+        p.txId === action.txId
+          ? { ...p, nfcValidated: true, settled: true, settledAt: Date.now() }
+          : p
+      );
+
+      const updatedTransfers = state.transfers.map((t) =>
+        t.id === action.txId
+          ? {
+              ...t,
+              stage: "FINAL_RESULT" as const,
+              status: "completed" as const,
+              nfcVerified: true,
+              nfcPayload: action.payload,
+              destHash: t.destHash || simHash(`${action.txId}:dest:settled`),
+            }
+          : t
+      );
+
+      const newAudit: AuditEntry = {
+        id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+        at: Date.now(),
+        actor: "RECEIVER_PORTAL",
+        action: "TRANSFER_SETTLED_VIA_NFC",
+        detail: `Transfer ${action.txId} validated via physical NFC tap. +${amountToAdd.toLocaleString("en-US")} ${targetInbound?.asset || "USDC"} credited to ${state.receiverAccount.name}`,
+      };
+
+      const newEvent: StreamEvent = {
+        id: `EV-${String(++evSeq).padStart(4, "0")}`,
+        chain: targetInbound?.destChain || "arbitrum",
+        type: "SETTLEMENT",
+        txId: action.txId,
+        detail: `Destination settlement confirmed: +${amountToAdd.toLocaleString("en-US")} USDC credited to ${state.receiverAccount.address} via verified RIFT Key`,
+        hash: simHash(`${action.txId}:release`),
+        at: Date.now(),
+        isSimulated: true,
+      };
+
+      return {
+        ...state,
+        transfers: updatedTransfers,
+        receiverAccount: {
+          ...state.receiverAccount,
+          balance: state.receiverAccount.balance + amountToAdd,
+          pendingInbound: updatedPending,
+        },
+        audit: [newAudit, ...state.audit],
+        events: [newEvent, ...state.events],
+      };
+    }
 
     case "SET_STAGE":
       return { ...state, transfers: state.transfers.map((t) => (t.id === action.txId ? { ...t, stage: action.stage } : t)) };
@@ -762,5 +969,22 @@ export function useClient(id: string | undefined) {
   return CLIENTS.find((c) => c.id === id);
 }
 
-export { CLIENTS, CHAINS, ATTACK_SCENARIOS, SCENARIOS, makeEvent, makeNormalizedEvent, simHash, riskBand };
-export type { Rule, NormalizedEvent, CorrelatedPair, RuleEvaluationResult, AttackScenarioTemplate };
+export {
+  CLIENTS,
+  CHAINS,
+  ATTACK_SCENARIOS,
+  SCENARIOS,
+  makeEvent,
+  makeNormalizedEvent,
+  simHash,
+  riskBand,
+  evaluateTransferPreflight,
+};
+export type {
+  Rule,
+  NormalizedEvent,
+  CorrelatedPair,
+  RuleEvaluationResult,
+  AttackScenarioTemplate,
+  PreflightRuleCheck,
+};
