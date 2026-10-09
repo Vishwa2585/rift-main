@@ -19,7 +19,78 @@ import {
   type AttackScenarioTemplate,
   evaluateTransferPreflight,
   type PreflightRuleCheck,
+  computeTransactionDigest,
+  verifyTransactionDigest,
+  type TransactionChallengeParams,
 } from "./engine";
+
+export type TransactionState =
+  | "CREATED"
+  | "PENDING_RISK_ASSESSMENT"
+  | "PENDING_PARTY_APPROVAL"
+  | "PENDING_RIFT_KEY"
+  | "READY_FOR_EXECUTION"
+  | "SUBMITTED"
+  | "CONFIRMED"
+  | "SETTLED"
+  | "HELD"
+  | "REJECTED"
+  | "EXPIRED"
+  | "FAILED"
+  | "RECONCILIATION_REQUIRED";
+
+export type PartyDecision = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface TwoPartyApproval {
+  required: boolean;
+  senderDecision: PartyDecision;
+  receiverDecision: PartyDecision;
+  senderDecidedAt?: number | undefined;
+  receiverDecidedAt?: number | undefined;
+  deadlineTimestamp: number;
+  reason: string;
+  policy: "MANDATORY_TWO_PARTY" | "SENDER_ONLY" | "STANDARD";
+  settlementHeld: boolean;
+  riskScore: number;
+  anomalySummary: string;
+}
+
+export interface RiftKeyChallenge {
+  txId: string;
+  sourceChain: string;
+  destChain: string;
+  asset: string;
+  amount: number;
+  recipient: string;
+  nonce: string;
+  expiresAt: number;
+  policy: "MANDATORY_HIGH_RISK" | "OPTIONAL_SENDER" | "STANDARD";
+  digest: string;
+  consumed: boolean;
+  consumedAt?: number | undefined;
+}
+
+export type RecipientType = "REGISTERED" | "UNREGISTERED_WALLET" | "PENDING_CLAIM";
+
+export function isValidTransition(from: TransactionState, to: TransactionState): boolean {
+  if (from === to) return true;
+  const transitions: Record<TransactionState, TransactionState[]> = {
+    CREATED: ["PENDING_RISK_ASSESSMENT", "REJECTED"],
+    PENDING_RISK_ASSESSMENT: ["PENDING_PARTY_APPROVAL", "PENDING_RIFT_KEY", "READY_FOR_EXECUTION", "HELD", "REJECTED"],
+    PENDING_PARTY_APPROVAL: ["PENDING_RIFT_KEY", "READY_FOR_EXECUTION", "HELD", "REJECTED", "EXPIRED"],
+    PENDING_RIFT_KEY: ["READY_FOR_EXECUTION", "HELD", "REJECTED", "EXPIRED"],
+    READY_FOR_EXECUTION: ["SUBMITTED", "HELD", "FAILED"],
+    SUBMITTED: ["CONFIRMED", "FAILED", "RECONCILIATION_REQUIRED"],
+    CONFIRMED: ["SETTLED", "RECONCILIATION_REQUIRED"],
+    SETTLED: [],
+    HELD: ["PENDING_PARTY_APPROVAL", "READY_FOR_EXECUTION", "REJECTED"],
+    REJECTED: [],
+    EXPIRED: ["PENDING_PARTY_APPROVAL", "REJECTED"],
+    FAILED: ["RECONCILIATION_REQUIRED", "REJECTED"],
+    RECONCILIATION_REQUIRED: ["SETTLED", "FAILED"],
+  };
+  return transitions[from]?.includes(to) ?? false;
+}
 
 export type TxStage =
   | "CREATED" | "RISK_ASSESSMENT" | "AWAITING_AUTHORIZATION" | "AUTHORIZATION_VERIFIED"
@@ -39,6 +110,12 @@ export interface Transfer {
   amount: number;
   destChain: ChainId;
   recipient: string;
+  counterpartyId?: string | undefined;
+  recipientType?: RecipientType | undefined;
+  claimToken?: string | undefined;
+  state?: TransactionState | undefined;
+  twoPartyApproval?: TwoPartyApproval | undefined;
+  keyChallenge?: RiftKeyChallenge | undefined;
   stage: TxStage;
   status: "pending" | "authorized" | "completed" | "flagged" | "rejected";
   nfcVerified: boolean;
@@ -47,6 +124,11 @@ export interface Transfer {
   requiresNfc?: boolean | undefined;
   sourceHash: string;
   destHash?: string | undefined;
+  sourceBlockNumber?: number | undefined;
+  destBlockNumber?: number | undefined;
+  confirmations?: number | undefined;
+  requiredConfirmations?: number | undefined;
+  receiptStatus?: "SUCCESS" | "REVERTED" | "PENDING" | undefined;
   createdAt: number;
   note?: string | undefined;
 }
@@ -147,6 +229,8 @@ export interface RiftState {
   scanningState: "IDLE" | "SCANNING" | "PAUSED" | "CORRELATING" | "ALERT_GENERATED";
   operationsHeld: boolean;
   activeAlert: Incident | null;
+  activeApprovalTxId: string | null;
+  consumedAuthNonces: string[];
   receiverAccount: DemoReceiverAccount;
   virtualNfcCard: VirtualNfcCard;
 }
@@ -213,16 +297,63 @@ function seedTransfers(): Transfer[] {
   const now = Date.now();
   return [
     {
-      id: "RFT-TX-0091", clientId: "cl-ellington", fromAccount: "acc-ellington-1", toAccount: "acc-ellington-2",
-      asset: "USDC", amount: 75_000_000, destChain: "ethereum", recipient: "0x4aa1…9f02",
-      stage: "FINAL_RESULT", status: "completed", nfcVerified: true, nfcPayload: "RIFT-KEY:DEMO-01",
-      sourceHash: simHash("RFT-TX-0091:src"), destHash: simHash("RFT-TX-0091:dst"), createdAt: now - 1000 * 60 * 30,
+      id: "RFT-TX-0091",
+      clientId: "cl-ellington",
+      fromAccount: "acc-ellington-1",
+      toAccount: "acc-ellington-2",
+      asset: "USDC",
+      amount: 75_000_000,
+      destChain: "ethereum",
+      recipient: "0x4aa1…9f02",
+      recipientType: "REGISTERED",
+      counterpartyId: "CPT-4aa19f02",
+      state: "SETTLED",
+      stage: "FINAL_RESULT",
+      status: "completed",
+      nfcVerified: true,
+      nfcPayload: "RIFT-KEY:DEMO-01",
+      sourceHash: simHash("RFT-TX-0091:src"),
+      destHash: simHash("RFT-TX-0091:dst"),
+      sourceBlockNumber: 21_044_120,
+      destBlockNumber: 21_044_152,
+      confirmations: 32,
+      requiredConfirmations: 32,
+      receiptStatus: "SUCCESS",
+      createdAt: now - 1000 * 60 * 30,
     },
     {
-      id: "RFT-TX-0093", clientId: "cl-blackwell", fromAccount: "acc-blackwell-2", toAccount: "acc-blackwell-1",
-      asset: "USDC", amount: 9_200_000, destChain: "ethereum", recipient: "0x91bc…44de",
-      stage: "CORRELATION", status: "pending", nfcVerified: true, nfcPayload: "RIFT-KEY:DEMO-01",
-      sourceHash: simHash("RFT-TX-0093:src"), createdAt: now - 1000 * 60 * 8,
+      id: "RFT-TX-0093",
+      clientId: "cl-blackwell",
+      fromAccount: "acc-blackwell-2",
+      toAccount: "acc-blackwell-1",
+      asset: "USDC",
+      amount: 9_200_000,
+      destChain: "ethereum",
+      recipient: "0x91bc…44de",
+      recipientType: "REGISTERED",
+      counterpartyId: "CPT-91bc44de",
+      state: "PENDING_PARTY_APPROVAL",
+      stage: "CORRELATION",
+      status: "pending",
+      nfcVerified: false,
+      twoPartyApproval: {
+        required: true,
+        senderDecision: "APPROVED",
+        receiverDecision: "PENDING",
+        senderDecidedAt: now - 1000 * 60 * 2,
+        deadlineTimestamp: now + 1000 * 180,
+        reason: "Cross-Chain Beneficiary Correlation Verification",
+        policy: "MANDATORY_TWO_PARTY",
+        settlementHeld: true,
+        riskScore: 28,
+        anomalySummary: "High-value cross-chain transfer awaiting destination recipient consent before release.",
+      },
+      sourceHash: simHash("RFT-TX-0093:src"),
+      sourceBlockNumber: 21_044_188,
+      confirmations: 16,
+      requiredConfirmations: 32,
+      receiptStatus: "PENDING",
+      createdAt: now - 1000 * 60 * 8,
     },
   ];
 }
@@ -328,6 +459,8 @@ export function initialState(): RiftState {
     scanningState: "SCANNING",
     operationsHeld: false,
     activeAlert: null,
+    activeApprovalTxId: "RFT-TX-0093",
+    consumedAuthNonces: ["AUTH-55219"],
     receiverAccount: INITIAL_RECEIVER_ACCOUNT,
     virtualNfcCard: INITIAL_VIRTUAL_NFC_CARD,
   };
@@ -340,7 +473,7 @@ let txSeq = 100;
 
 export function nextTxId() { return `RFT-TX-${String(++txSeq + 100).padStart(4, "0")}`; }
 
-type Action =
+export type Action =
   | { type: "RESET" }
   | { type: "CREATE_TRANSFER"; transfer: Transfer }
   | { type: "WRITE_RIFT_NFC_KEY"; txId: string; payload: string; serial?: string }
@@ -361,7 +494,15 @@ type Action =
   | { type: "SET_DATA_SOURCE"; source: RiftState["dataSource"] }
   | { type: "SET_SCANNING_STATE"; state: RiftState["scanningState"] }
   | { type: "TOGGLE_OPERATIONS_HELD" }
-  | { type: "DISMISS_ALERT" };
+  | { type: "DISMISS_ALERT" }
+  | { type: "SUBMIT_PARTY_APPROVAL"; txId: string; party: "sender" | "receiver"; decision: PartyDecision; note?: string }
+  | { type: "EXPIRE_APPROVAL"; txId: string }
+  | { type: "SET_TRANSACTION_STATE"; txId: string; state: TransactionState; note?: string }
+  | { type: "INITIATE_TWO_PARTY_ALERT"; txId: string; reason: string; riskScore: number; timeoutSeconds?: number }
+  | { type: "GENERATE_RIFT_KEY_CHALLENGE"; txId: string; policy?: "MANDATORY_HIGH_RISK" | "OPTIONAL_SENDER" | "STANDARD" }
+  | { type: "VALIDATE_RIFT_KEY_CHALLENGE"; txId: string; nonce: string; digest: string; cardSerial?: string }
+  | { type: "CLAIM_PENDING_TRANSFER"; txId: string; recipientAddress: string }
+  | { type: "SET_ACTIVE_APPROVAL"; txId: string | null };
 
 function coreDetectionPipeline(
   state: RiftState,
@@ -512,9 +653,59 @@ function coreDetectionPipeline(
       detail: `${incident.id} [${incident.severity.toUpperCase()}] Risk ${incident.score} — ${incident.title}`,
     };
 
+    const txIdToUse = pair.txId || streamEv.txId;
+    const approvalObj: TwoPartyApproval = {
+      required: true,
+      senderDecision: "PENDING",
+      receiverDecision: "PENDING",
+      deadlineTimestamp: Date.now() + 1000 * 60,
+      reason: primaryRule?.ruleName || "Interchain Anomaly Detected",
+      policy: "MANDATORY_TWO_PARTY",
+      settlementHeld: true,
+      riskScore: evaluation.score,
+      anomalySummary: primaryRule?.reason || "Suspicious cross-chain divergence observed",
+    };
+
+    let updatedTransfersList = state.transfers;
+    if (state.transfers.some((t) => t.id === txIdToUse)) {
+      updatedTransfersList = state.transfers.map((t) =>
+        t.id === txIdToUse
+          ? {
+              ...t,
+              state: "PENDING_PARTY_APPROVAL" as const,
+              status: "flagged" as const,
+              twoPartyApproval: approvalObj,
+            }
+          : t
+      );
+    } else {
+      const newTransfer: Transfer = {
+        id: txIdToUse,
+        clientId: "cl-veyron",
+        fromAccount: "acc-veyron-1",
+        toAccount: "acc-veyron-2",
+        asset: pair.sourceEvent?.token || pair.destEvent?.token || "USDC",
+        amount: pair.sourceEvent?.amount || pair.destEvent?.amount || 250_000_000,
+        destChain: (pair.destEvent?.chain as ChainId) || "arbitrum",
+        recipient: pair.destEvent?.recipient || pair.sourceEvent?.recipient || "0x7a41…e9c0",
+        recipientType: "REGISTERED",
+        state: "PENDING_PARTY_APPROVAL",
+        stage: "CORRELATION",
+        status: "flagged",
+        nfcVerified: false,
+        requiresNfc: true,
+        twoPartyApproval: approvalObj,
+        sourceHash: pair.sourceEvent?.txHash || simHash("src:alert"),
+        destHash: pair.destEvent?.txHash,
+        createdAt: Date.now(),
+      };
+      updatedTransfersList = [newTransfer, ...state.transfers];
+    }
+
     return {
       state: {
         ...state,
+        transfers: updatedTransfersList,
         events: [alertEvent, ...updatedEvents],
         normalizedEvents: updatedNormalized,
         correlatedPairs: currentPairs,
@@ -522,6 +713,7 @@ function coreDetectionPipeline(
         attackCount: state.attackCount + 1,
         scanningState: "ALERT_GENERATED",
         activeAlert: incident,
+        activeApprovalTxId: txIdToUse,
         audit: [auditEntry, ...state.audit],
       },
       newIncident: incident,
@@ -549,7 +741,7 @@ function coreDetectionPipeline(
   };
 }
 
-function reducer(state: RiftState, action: Action): RiftState {
+export function reducer(state: RiftState, action: Action): RiftState {
   switch (action.type) {
     case "RESET":
       return initialState();
@@ -560,31 +752,113 @@ function reducer(state: RiftState, action: Action): RiftState {
         action.transfer.recipient.toLowerCase().includes("7a41") ||
         action.transfer.recipient === state.receiverAccount.address;
 
+      // Section 3: Recipient Resolution & Identification
+      let recipientType: RecipientType = "REGISTERED";
+      let counterpartyId: string | undefined = undefined;
+      let claimToken: string | undefined = undefined;
+
+      if (action.transfer.recipientType) {
+        recipientType = action.transfer.recipientType;
+        if (recipientType === "UNREGISTERED_WALLET") {
+          counterpartyId = `CPT-${simHash(action.transfer.recipient).slice(2, 10)}`;
+        } else if (recipientType === "PENDING_CLAIM") {
+          claimToken = `CLM-${Math.floor(100000 + Math.random() * 900000)}`;
+        } else {
+          counterpartyId = "CPT-7a41e9c0";
+        }
+      } else if (action.transfer.recipient.includes("@") || action.transfer.recipient.toLowerCase().includes("claim")) {
+        recipientType = "PENDING_CLAIM";
+        claimToken = `CLM-${Math.floor(100000 + Math.random() * 900000)}`;
+      } else if (isForDemoReceiver || action.transfer.recipient.toLowerCase().includes("7a41")) {
+        recipientType = "REGISTERED";
+        counterpartyId = "CPT-7a41e9c0";
+      } else if (action.transfer.recipient.startsWith("0x")) {
+        recipientType = "UNREGISTERED_WALLET";
+        counterpartyId = `CPT-${simHash(action.transfer.recipient).slice(2, 10)}`;
+      } else {
+        recipientType = "PENDING_CLAIM";
+        claimToken = `CLM-${Math.floor(100000 + Math.random() * 900000)}`;
+      }
+
+      // Initial state determination based on policy and risk profile
+      const isHighRisk = action.transfer.amount >= 20_000_000 || action.transfer.recipient.toLowerCase().includes("7f39");
+      let nextState: TransactionState = "CREATED";
+      let approvalObj: TwoPartyApproval | undefined = undefined;
+
+      if (isHighRisk) {
+        nextState = "PENDING_PARTY_APPROVAL";
+        approvalObj = {
+          required: true,
+          senderDecision: "PENDING",
+          receiverDecision: "PENDING",
+          deadlineTimestamp: Date.now() + 1000 * 60, // 60s timeout
+          reason: action.transfer.recipient.toLowerCase().includes("7f39")
+            ? "Beneficiary Mismatch Alert (Flagged Address)"
+            : "High-Value Transaction Two-Party Consent Policy",
+          policy: "MANDATORY_TWO_PARTY",
+          settlementHeld: true,
+          riskScore: action.transfer.recipient.toLowerCase().includes("7f39") ? 75 : 40,
+          anomalySummary: action.transfer.recipient.toLowerCase().includes("7f39")
+            ? "Recipient failed whitelist verification (Rule R-03)."
+            : "Transfer exceeds high-value threshold; dual consent mandatory.",
+        };
+      } else if (action.transfer.requiresNfc) {
+        nextState = "PENDING_RIFT_KEY";
+      } else {
+        nextState = "SETTLED";
+      }
+
+      const enhancedTransfer: Transfer = {
+        ...action.transfer,
+        recipientType,
+        counterpartyId,
+        claimToken,
+        state: nextState,
+        stage: nextState === "SETTLED" ? "FINAL_RESULT" : action.transfer.stage,
+        status: nextState === "SETTLED" ? "completed" : isHighRisk ? "flagged" : "pending",
+        twoPartyApproval: approvalObj,
+        sourceBlockNumber: 21_044_200,
+        confirmations: nextState === "SETTLED" ? 32 : 1,
+        requiredConfirmations: 32,
+        receiptStatus: nextState === "SETTLED" ? "SUCCESS" : "PENDING",
+      };
+
       const newPendingInbound: PendingInboundTransfer = {
-        txId: action.transfer.id,
+        txId: enhancedTransfer.id,
         senderName: client?.name || "Private Client Vault",
-        senderAddress: action.transfer.fromAccount,
-        asset: action.transfer.asset,
-        amount: action.transfer.amount,
-        destChain: action.transfer.destChain,
-        recipientAddress: action.transfer.recipient,
-        riftKeyPayload: action.transfer.riftKeyPayload || `RIFT-KEY:v2:${action.transfer.id}:PENDING`,
-        requiresNfc: action.transfer.requiresNfc ?? true,
-        nfcValidated: false,
-        settled: false,
+        senderAddress: enhancedTransfer.fromAccount,
+        asset: enhancedTransfer.asset,
+        amount: enhancedTransfer.amount,
+        destChain: enhancedTransfer.destChain,
+        recipientAddress: enhancedTransfer.recipient,
+        riftKeyPayload: enhancedTransfer.riftKeyPayload || `RIFT-KEY:v2:${enhancedTransfer.id}:PENDING`,
+        requiresNfc: enhancedTransfer.requiresNfc ?? true,
+        nfcValidated: nextState === "SETTLED",
+        settled: nextState === "SETTLED",
         createdAt: Date.now(),
+      };
+
+      const auditEntry: AuditEntry = {
+        id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+        at: Date.now(),
+        actor: "RIFT_BANK",
+        action: "TRANSFER_CREATED",
+        detail: `Transfer ${enhancedTransfer.id} created: ${enhancedTransfer.amount.toLocaleString()} ${enhancedTransfer.asset} to ${enhancedTransfer.recipient} [Type: ${recipientType}, State: ${nextState}]`,
       };
 
       return {
         ...state,
-        transfers: [action.transfer, ...state.transfers],
-        activeTxId: action.transfer.id,
+        transfers: [enhancedTransfer, ...state.transfers],
+        activeTxId: enhancedTransfer.id,
+        activeApprovalTxId: isHighRisk ? enhancedTransfer.id : state.activeApprovalTxId,
         receiverAccount: {
           ...state.receiverAccount,
+          balance: nextState === "SETTLED" && isForDemoReceiver ? state.receiverAccount.balance + enhancedTransfer.amount : state.receiverAccount.balance,
           pendingInbound: isForDemoReceiver
             ? [newPendingInbound, ...state.receiverAccount.pendingInbound]
             : state.receiverAccount.pendingInbound,
         },
+        audit: [auditEntry, ...state.audit],
       };
     }
 
@@ -908,6 +1182,405 @@ function reducer(state: RiftState, action: Action): RiftState {
     case "DISMISS_ALERT":
       return { ...state, activeAlert: null };
 
+    case "SUBMIT_PARTY_APPROVAL": {
+      const tx = state.transfers.find((t) => t.id === action.txId);
+      if (!tx || !tx.twoPartyApproval) return state;
+
+      const prevApproval = tx.twoPartyApproval;
+      const senderDec = action.party === "sender" ? action.decision : prevApproval.senderDecision;
+      const receiverDec = action.party === "receiver" ? action.decision : prevApproval.receiverDecision;
+      const senderTime = action.party === "sender" ? Date.now() : prevApproval.senderDecidedAt;
+      const receiverTime = action.party === "receiver" ? Date.now() : prevApproval.receiverDecidedAt;
+
+      let nextState: TransactionState = tx.state || "PENDING_PARTY_APPROVAL";
+      let nextStatus: Transfer["status"] = tx.status;
+      let held = prevApproval.settlementHeld;
+      let auditDetail = "";
+
+      if (action.decision === "REJECTED") {
+        nextState = "REJECTED";
+        nextStatus = "rejected";
+        held = true;
+        auditDetail = `Two-Party Alert: ${action.party.toUpperCase()} REJECTED transaction ${tx.id}. Execution terminated and funds held by policy.`;
+      } else if (senderDec === "APPROVED" && receiverDec === "APPROVED") {
+        // Both parties approved! Rerun security policy (Step 14)
+        const isBeneficiaryTheft = tx.recipient.toLowerCase().includes("attacker") || tx.recipient.toLowerCase().includes("9999");
+        if (isBeneficiaryTheft) {
+          nextState = "RECONCILIATION_REQUIRED";
+          nextStatus = "flagged";
+          held = true;
+          auditDetail = `Two-Party Alert: Both approved ${tx.id}, but critical invariant violation (unauthorized beneficiary) prevents automatic release. State moved to RECONCILIATION_REQUIRED.`;
+        } else if (tx.requiresNfc || tx.amount >= 50_000_000) {
+          nextState = "PENDING_RIFT_KEY";
+          nextStatus = "authorized";
+          held = true;
+          auditDetail = `Two-Party Alert: Both parties APPROVED ${tx.id}. Mandatory RIFT KEY hardware authorization required before release.`;
+        } else {
+          nextState = "SETTLED";
+          nextStatus = "completed";
+          held = false;
+          auditDetail = `Two-Party Alert: Both parties APPROVED ${tx.id}. Re-evaluation passed; permitted transfer SETTLED.`;
+        }
+      } else {
+        auditDetail = `Two-Party Alert: ${action.party.toUpperCase()} APPROVED ${tx.id}. Awaiting counterparty response before deadline.`;
+      }
+
+      const updatedApproval: TwoPartyApproval = {
+        ...prevApproval,
+        senderDecision: senderDec,
+        receiverDecision: receiverDec,
+        senderDecidedAt: senderTime,
+        receiverDecidedAt: receiverTime,
+        settlementHeld: held,
+      };
+
+      const updatedTransfers = state.transfers.map((t) =>
+        t.id === action.txId
+          ? {
+              ...t,
+              state: nextState,
+              status: nextStatus,
+              twoPartyApproval: updatedApproval,
+              stage: nextState === "SETTLED" ? ("FINAL_RESULT" as const) : t.stage,
+            }
+          : t
+      );
+
+      let updatedReceiver = state.receiverAccount;
+      if (nextState === "SETTLED" && (tx.recipient.toLowerCase().includes("7a41") || tx.recipient === state.receiverAccount.address)) {
+        updatedReceiver = {
+          ...state.receiverAccount,
+          balance: state.receiverAccount.balance + tx.amount,
+          pendingInbound: state.receiverAccount.pendingInbound.map((p) =>
+            p.txId === tx.id ? { ...p, settled: true, settledAt: Date.now() } : p
+          ),
+        };
+      }
+
+      return {
+        ...state,
+        transfers: updatedTransfers,
+        receiverAccount: updatedReceiver,
+        activeApprovalTxId: nextState === "PENDING_PARTY_APPROVAL" ? state.activeApprovalTxId : null,
+        audit: [
+          {
+            id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+            at: Date.now(),
+            actor: action.party === "sender" ? "SENDER_PORTAL" : "RECEIVER_PORTAL",
+            action: `PARTY_${action.decision}`,
+            detail: auditDetail,
+          },
+          ...state.audit,
+        ],
+      };
+    }
+
+    case "EXPIRE_APPROVAL": {
+      const tx = state.transfers.find((t) => t.id === action.txId);
+      if (!tx || !tx.twoPartyApproval) return state;
+      if (tx.twoPartyApproval.senderDecision === "APPROVED" && tx.twoPartyApproval.receiverDecision === "APPROVED") {
+        return state;
+      }
+
+      const updatedTransfers = state.transfers.map((t) =>
+        t.id === action.txId
+          ? {
+              ...t,
+              state: "EXPIRED" as const,
+              status: "flagged" as const,
+              twoPartyApproval: {
+                ...t.twoPartyApproval!,
+                settlementHeld: true,
+              },
+            }
+          : t
+      );
+
+      return {
+        ...state,
+        transfers: updatedTransfers,
+        activeApprovalTxId: state.activeApprovalTxId === action.txId ? null : state.activeApprovalTxId,
+        audit: [
+          {
+            id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+            at: Date.now(),
+            actor: "SECURITY_WORKER",
+            action: "APPROVAL_DEADLINE_EXPIRED",
+            detail: `Response deadline expired for ${action.txId}. Server-side policy enforced: silence is not consent. Protected operation held.`,
+          },
+          ...state.audit,
+        ],
+      };
+    }
+
+    case "SET_TRANSACTION_STATE": {
+      return {
+        ...state,
+        transfers: state.transfers.map((t) =>
+          t.id === action.txId
+            ? { ...t, state: action.state, stage: action.state === "SETTLED" ? ("FINAL_RESULT" as const) : t.stage }
+            : t
+        ),
+        audit: action.note
+          ? [
+              {
+                id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+                at: Date.now(),
+                actor: "STATE_MACHINE",
+                action: `STATE_${action.state}`,
+                detail: action.note,
+              },
+              ...state.audit,
+            ]
+          : state.audit,
+      };
+    }
+
+    case "INITIATE_TWO_PARTY_ALERT": {
+      const timeout = action.timeoutSeconds || 60;
+      const updatedTransfers = state.transfers.map((t) =>
+        t.id === action.txId
+          ? {
+              ...t,
+              state: "PENDING_PARTY_APPROVAL" as const,
+              status: "flagged" as const,
+              twoPartyApproval: {
+                required: true,
+                senderDecision: "PENDING" as const,
+                receiverDecision: "PENDING" as const,
+                deadlineTimestamp: Date.now() + 1000 * timeout,
+                reason: action.reason,
+                policy: "MANDATORY_TWO_PARTY" as const,
+                settlementHeld: true,
+                riskScore: action.riskScore,
+                anomalySummary: action.reason,
+              },
+            }
+          : t
+      );
+
+      return {
+        ...state,
+        transfers: updatedTransfers,
+        activeApprovalTxId: action.txId,
+        audit: [
+          {
+            id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+            at: Date.now(),
+            actor: "RIFT_WATCH",
+            action: "TWO_PARTY_ALERT_BROADCAST",
+            detail: `Two-Party Security Alert broadcasted for ${action.txId} [Risk ${action.riskScore}]: ${action.reason}. Response deadline: ${timeout}s.`,
+          },
+          ...state.audit,
+        ],
+      };
+    }
+
+    case "GENERATE_RIFT_KEY_CHALLENGE": {
+      const tx = state.transfers.find((t) => t.id === action.txId);
+      if (!tx) return state;
+
+      const nonce = `NONCE-${Math.floor(100000 + Math.random() * 900000)}`;
+      const expiresAt = Date.now() + 1000 * 60 * 15;
+      const digest = computeTransactionDigest({
+        txId: tx.id,
+        sourceChain: "ethereum",
+        destChain: tx.destChain,
+        amount: tx.amount,
+        asset: tx.asset,
+        recipient: tx.recipient,
+        nonce,
+        expiresAt,
+      });
+
+      const challenge: RiftKeyChallenge = {
+        txId: tx.id,
+        sourceChain: "ethereum",
+        destChain: tx.destChain,
+        asset: tx.asset,
+        amount: tx.amount,
+        recipient: tx.recipient,
+        nonce,
+        expiresAt,
+        policy: action.policy || "MANDATORY_HIGH_RISK",
+        digest,
+        consumed: false,
+      };
+
+      const payload = `RIFT-KEY:v2:${tx.id}:${nonce}:${tx.recipient}:${tx.amount}:${tx.asset}:${digest.slice(0, 16)}`;
+
+      const updatedTransfers = state.transfers.map((t) =>
+        t.id === action.txId
+          ? { ...t, keyChallenge: challenge, riftKeyPayload: payload, nfcPayload: payload }
+          : t
+      );
+
+      return {
+        ...state,
+        transfers: updatedTransfers,
+        audit: [
+          {
+            id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+            at: Date.now(),
+            actor: "RIFT_KEY_SERVICE",
+            action: "CHALLENGE_GENERATED",
+            detail: `Transaction-bound authorization challenge created for ${tx.id} (Nonce ${nonce}, Digest ${digest.slice(0, 12)}…).`,
+          },
+          ...state.audit,
+        ],
+      };
+    }
+
+    case "VALIDATE_RIFT_KEY_CHALLENGE": {
+      const tx = state.transfers.find((t) => t.id === action.txId);
+      if (!tx) return state;
+
+      // 1. Replay prevention check
+      if (state.consumedAuthNonces.includes(action.nonce)) {
+        const auditEntry: AuditEntry = {
+          id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+          at: Date.now(),
+          actor: "RIFT_KEY_GUARD",
+          action: "AUTHORIZATION_REPLAY_REJECTED",
+          detail: `CRITICAL: Reused authorization token/nonce ${action.nonce} detected on ${action.txId}. Replay attack stopped by single-use enforcement (Rule R-08).`,
+        };
+        return {
+          ...state,
+          transfers: state.transfers.map((t) => (t.id === action.txId ? { ...t, state: "HELD" as const, status: "rejected" as const } : t)),
+          audit: [auditEntry, ...state.audit],
+        };
+      }
+
+      // 2. Expiration check
+      if (tx.keyChallenge && Date.now() > tx.keyChallenge.expiresAt) {
+        return {
+          ...state,
+          audit: [
+            {
+              id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+              at: Date.now(),
+              actor: "RIFT_KEY_GUARD",
+              action: "CHALLENGE_EXPIRED",
+              detail: `Authorization challenge for ${action.txId} has expired. Fresh authorization required.`,
+            },
+            ...state.audit,
+          ],
+        };
+      }
+
+      // 3. Digest integrity check (prevents tampering)
+      if (tx.keyChallenge) {
+        const isValid = verifyTransactionDigest(action.digest || tx.keyChallenge.digest, {
+          txId: tx.id,
+          sourceChain: tx.keyChallenge.sourceChain,
+          destChain: tx.destChain,
+          amount: tx.amount,
+          asset: tx.asset,
+          recipient: tx.recipient,
+          nonce: action.nonce,
+          expiresAt: tx.keyChallenge.expiresAt,
+        });
+
+        if (!isValid) {
+          return {
+            ...state,
+            transfers: state.transfers.map((t) => (t.id === action.txId ? { ...t, state: "HELD" as const, status: "rejected" as const } : t)),
+            audit: [
+              {
+                id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+                at: Date.now(),
+                actor: "RIFT_KEY_GUARD",
+                action: "DIGEST_TAMPER_DETECTED",
+                detail: `Protected transaction fields for ${action.txId} modified after challenge generation. Authorization invalidated.`,
+              },
+              ...state.audit,
+            ],
+          };
+        }
+      }
+
+      // 4. Atomic single-use consumption & settlement
+      const updatedConsumed = [...state.consumedAuthNonces, action.nonce];
+      const updatedTransfers = state.transfers.map((t) =>
+        t.id === action.txId
+          ? {
+              ...t,
+              state: "SETTLED" as const,
+              stage: "FINAL_RESULT" as const,
+              status: "completed" as const,
+              nfcVerified: true,
+              destHash: t.destHash || simHash(`${action.txId}:dest:settled`),
+              keyChallenge: t.keyChallenge ? { ...t.keyChallenge, consumed: true, consumedAt: Date.now() } : undefined,
+            }
+          : t
+      );
+
+      let updatedReceiver = state.receiverAccount;
+      if (tx.recipient.toLowerCase().includes("7a41") || tx.recipient === state.receiverAccount.address) {
+        updatedReceiver = {
+          ...state.receiverAccount,
+          balance: state.receiverAccount.balance + tx.amount,
+          pendingInbound: state.receiverAccount.pendingInbound.map((p) =>
+            p.txId === tx.id ? { ...p, nfcValidated: true, settled: true, settledAt: Date.now() } : p
+          ),
+        };
+      }
+
+      return {
+        ...state,
+        transfers: updatedTransfers,
+        consumedAuthNonces: updatedConsumed,
+        receiverAccount: updatedReceiver,
+        audit: [
+          {
+            id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+            at: Date.now(),
+            actor: "RIFT_KEY_VALIDATOR",
+            action: "CHALLENGE_CONSUMED_SETTLED",
+            detail: `One-time authorization nonce ${action.nonce} verified & atomically consumed. Transfer ${action.txId} settled.`,
+          },
+          ...state.audit,
+        ],
+      };
+    }
+
+    case "CLAIM_PENDING_TRANSFER": {
+      const tx = state.transfers.find((t) => t.id === action.txId);
+      if (!tx) return state;
+
+      const updatedTransfers = state.transfers.map((t) =>
+        t.id === action.txId
+          ? {
+              ...t,
+              recipient: action.recipientAddress,
+              recipientType: "REGISTERED" as const,
+              state: "SETTLED" as const,
+              stage: "FINAL_RESULT" as const,
+              status: "completed" as const,
+              destHash: simHash(`${action.txId}:claim:settled`),
+            }
+          : t
+      );
+
+      return {
+        ...state,
+        transfers: updatedTransfers,
+        audit: [
+          {
+            id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
+            at: Date.now(),
+            actor: "CLAIM_REGISTRY",
+            action: "PENDING_CLAIM_SETTLED",
+            detail: `Reserved ledger funds for ${action.txId} released to registered address ${action.recipientAddress}. Claim finalized.`,
+          },
+          ...state.audit,
+        ],
+      };
+    }
+
+    case "SET_ACTIVE_APPROVAL":
+      return { ...state, activeApprovalTxId: action.txId };
+
     default:
       return state;
   }
@@ -949,6 +1622,25 @@ export function RiftProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state.scanningState]);
 
+  // Background timeout worker for Two-Party Approval deadlines
+  // Enforces server-side deadline expiration: silence is not consent
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const expired = state.transfers.find(
+        (t) =>
+          t.state === "PENDING_PARTY_APPROVAL" &&
+          t.twoPartyApproval &&
+          t.twoPartyApproval.deadlineTimestamp <= now &&
+          (t.twoPartyApproval.senderDecision === "PENDING" || t.twoPartyApproval.receiverDecision === "PENDING")
+      );
+      if (expired) {
+        dispatch({ type: "EXPIRE_APPROVAL", txId: expired.id });
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [state.transfers]);
+
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -979,6 +1671,8 @@ export {
   simHash,
   riskBand,
   evaluateTransferPreflight,
+  computeTransactionDigest,
+  verifyTransactionDigest,
 };
 export type {
   Rule,

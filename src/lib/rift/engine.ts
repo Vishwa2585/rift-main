@@ -19,8 +19,30 @@ export const DEFAULT_RULES: Rule[] = [
   { id: "R-05", name: "Token Mapping Validation", severity: "medium", description: "Flags assets whose destination token address does not map to canonical source asset.", weight: 20, enabled: true },
   { id: "R-06", name: "Finality Violation", severity: "high", description: "Detects withdrawal processing before source block meets required finality confirmations.", weight: 25, enabled: true },
   { id: "R-07", name: "Payload Integrity", severity: "medium", description: "Detects altered memo, routing fee, or parameter hashes between source and destination records.", weight: 15, enabled: true },
-  { id: "R-08", name: "Authorization Replay", severity: "critical", description: "Flags authorization credentials or NFC device attestations presented more than once.", weight: 30, enabled: true },
+  { id: "R-08", name: "Authorization Replay", severity: "critical", description: "Flags authorization credentials, NFC device attestations presented more than once, or invalid challenge digests.", weight: 30, enabled: true },
+  { id: "R-09", name: "Abnormal Withdrawal Volume", severity: "high", description: "Detects single transfers or aggregate withdrawals exceeding safe bridge liquidity velocity thresholds.", weight: 25, enabled: true },
 ];
+
+export interface TransactionChallengeParams {
+  txId: string;
+  sourceChain: string;
+  destChain: string;
+  amount: number;
+  asset: string;
+  recipient: string;
+  nonce: string;
+  expiresAt: number;
+}
+
+export function computeTransactionDigest(params: TransactionChallengeParams): string {
+  const canonical = `${params.txId}:${params.sourceChain}:${params.destChain}:${params.amount}:${params.asset}:${params.recipient.toLowerCase().trim()}:${params.nonce}:${params.expiresAt}`;
+  return simHash(canonical);
+}
+
+export function verifyTransactionDigest(digest: string, params: TransactionChallengeParams): boolean {
+  const expected = computeTransactionDigest(params);
+  return digest === expected;
+}
 
 export interface NormalizedEvent {
   id: string;
@@ -356,19 +378,79 @@ export function evaluateCorrelatedPair(
       }
 
       case "R-08": {
-        // AUTHORIZATION REPLAY
-        if (src?.rawPayload?.["replayedAuth"] === true) {
+        // AUTHORIZATION REPLAY / INVALID AUTHORIZATION
+        if (src?.rawPayload?.["replayedAuth"] === true || dst?.rawPayload?.["replayedAuth"] === true) {
           results.push({
             ruleId: rule.id,
             ruleName: rule.name,
             severity: rule.severity,
             triggered: true,
             reason: "Authorization token or physical key signature presented multiple times across separate sessions.",
-            eventRefs: [src.id],
+            eventRefs: [src?.id, dst?.id].filter(Boolean) as string[],
             expectedValue: "Fresh cryptographic attestation",
             observedValue: "Replayed attestation token AUTH-55231",
             timestamp: now,
             riskContribution: rule.weight,
+          });
+        } else if (src?.rawPayload?.["invalidAuth"] === true || dst?.rawPayload?.["invalidAuth"] === true) {
+          results.push({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            severity: rule.severity,
+            triggered: true,
+            reason: "Transaction parameters tampered after challenge creation; cryptographic digest signature mismatch.",
+            eventRefs: [src?.id, dst?.id].filter(Boolean) as string[],
+            expectedValue: "Matching transaction digest",
+            observedValue: "Invalid or tampered digest",
+            timestamp: now,
+            riskContribution: rule.weight,
+          });
+        } else {
+          results.push({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            severity: rule.severity,
+            triggered: false,
+            reason: "Authorization credentials verified valid and single-use.",
+            eventRefs: [src?.id, dst?.id].filter(Boolean) as string[],
+            expectedValue: "Valid authorization",
+            observedValue: "Valid",
+            timestamp: now,
+            riskContribution: 0,
+          });
+        }
+        break;
+      }
+
+      case "R-09": {
+        // ABNORMAL WITHDRAWAL VOLUME OR CONCENTRATION
+        const maxSafeVelocity = 200_000_000;
+        const amountToCheck = dst?.amount ?? src?.amount ?? 0;
+        if (amountToCheck > maxSafeVelocity) {
+          results.push({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            severity: rule.severity,
+            triggered: true,
+            reason: `Withdrawal volume (${amountToCheck.toLocaleString("en-US")} ${dst?.token || src?.token || "USDC"}) exceeds safe single-transaction velocity threshold of 200M.`,
+            eventRefs: [src?.id, dst?.id].filter(Boolean) as string[],
+            expectedValue: "≤ 200,000,000 USDC velocity threshold",
+            observedValue: `${amountToCheck.toLocaleString("en-US")} ${dst?.token || src?.token || "USDC"}`,
+            timestamp: now,
+            riskContribution: rule.weight,
+          });
+        } else {
+          results.push({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            severity: rule.severity,
+            triggered: false,
+            reason: "Transaction volume within normal bridge velocity thresholds.",
+            eventRefs: [src?.id, dst?.id].filter(Boolean) as string[],
+            expectedValue: "≤ 200,000,000 USDC",
+            observedValue: `${amountToCheck.toLocaleString("en-US")}`,
+            timestamp: now,
+            riskContribution: 0,
           });
         }
         break;
@@ -825,6 +907,18 @@ export function evaluateTransferPreflight(
     expected: "Fresh RIFT Key Cryptographic Nonce",
     observed: params.hasNfcKey ? "Physical RIFT NFC Key Paired" : "Standard Multi-Sig Authorization",
     detail: params.hasNfcKey ? "Fresh one-time cryptographic token generated for physical NFC card writing." : "Requires hardware key pairing for high-assurance transfers.",
+  });
+
+  // R-09: Velocity & Concentration Check
+  const maxVelocity = 200_000_000;
+  const r9Passed = params.amount <= maxVelocity;
+  checks.push({
+    ruleId: "R-09",
+    name: "Withdrawal Velocity & Concentration",
+    passed: r9Passed,
+    expected: "≤ 200,000,000 USD Single Transfer Threshold",
+    observed: `${params.amount.toLocaleString("en-US")} ${params.asset}`,
+    detail: r9Passed ? "Volume is within standard bridge velocity allocation limit." : "Exceeds standard 200M single withdrawal liquidity concentration ceiling.",
   });
 
   const allPassed = checks.every((c) => {

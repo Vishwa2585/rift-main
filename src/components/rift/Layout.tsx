@@ -2,10 +2,12 @@ import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useRift } from "@/lib/rift/store";
+import { TwoPartyAlertModal } from "./TwoPartyAlertModal";
 import { SimBadge } from "./ui";
 import {
   LayoutDashboard, Landmark, ArrowLeftRight, Radar, ShieldAlert, History,
   Nfc, BarChart3, BookLock, Settings, Sun, Moon, Monitor, RotateCcw, Menu, X, Play,
+  Users, CheckCircle2,
 } from "lucide-react";
 
 const NAV = [
@@ -75,14 +77,35 @@ export function ThemeToggle() {
 }
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { state, dispatch } = useRift();
-  const [open, setOpen] = useState(false);
-  const openIncidents = state.incidents.filter((i) => i.status !== "resolved").length;
+  const openIncidents = state.incidents.filter((i) => i.status === "open").length;
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const pendingApprovalTx = state.transfers.find(
+    (t) =>
+      t.twoPartyApproval &&
+      t.state === "PENDING_PARTY_APPROVAL" &&
+      (t.twoPartyApproval.senderDecision === "PENDING" || t.twoPartyApproval.receiverDecision === "PENDING")
+  );
+  const activeApprovalTx = state.activeApprovalTxId
+    ? state.transfers.find((t) => t.id === state.activeApprovalTxId)
+    : pendingApprovalTx;
 
   return (
     <div className="min-h-screen bg-background w-full max-w-full overflow-x-hidden">
+      {/* Two-Party Security Alert Modal */}
+      {(showApprovalModal || state.activeApprovalTxId) && activeApprovalTx && (
+        <TwoPartyAlertModal
+          txId={activeApprovalTx.id}
+          onClose={() => {
+            setShowApprovalModal(false);
+            dispatch({ type: "SET_ACTIVE_APPROVAL", txId: null });
+          }}
+        />
+      )}
+
       {/* ambient backdrop */}
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute inset-0" style={{ background: "radial-gradient(1200px 600px at 80% -10%, color-mix(in oklab, var(--color-gold) 8%, transparent), transparent 60%)" }} />
@@ -213,6 +236,43 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       <main className="lg:pl-64 pb-24 lg:pb-8 w-full max-w-full overflow-x-hidden min-w-0">
         <div className="mx-auto max-w-6xl w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-8 min-w-0">
+          {/* Active Two-Party Approval Banner */}
+          {pendingApprovalTx && pendingApprovalTx.twoPartyApproval && (
+            <div className="mb-6 rounded-2xl border border-warning/70 bg-warning/15 p-4 shadow-lg shadow-warning/10 backdrop-blur-md animate-in fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex size-9 items-center justify-center rounded-xl bg-warning/20 text-warning ring-2 ring-warning/30">
+                    <Users className="size-5" />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md bg-warning px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black">
+                        TWO-PARTY ACTION REQUIRED
+                      </span>
+                      <span className="font-mono text-xs font-bold text-warning">
+                        Tx {pendingApprovalTx.id}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">· Dual Consent Gate</span>
+                    </div>
+                    <p className="mt-1 text-xs sm:text-sm font-semibold text-foreground">
+                      {pendingApprovalTx.twoPartyApproval.reason} — Sender: <span className={cn("font-mono font-bold", pendingApprovalTx.twoPartyApproval.senderDecision === "APPROVED" ? "text-success" : "text-warning")}>{pendingApprovalTx.twoPartyApproval.senderDecision}</span> | Receiver: <span className={cn("font-mono font-bold", pendingApprovalTx.twoPartyApproval.receiverDecision === "APPROVED" ? "text-success" : "text-warning")}>{pendingApprovalTx.twoPartyApproval.receiverDecision}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    dispatch({ type: "SET_ACTIVE_APPROVAL", txId: pendingApprovalTx.id });
+                    setShowApprovalModal(true);
+                  }}
+                  className="inline-flex items-center justify-center rounded-xl bg-warning px-4 py-2 text-xs font-bold text-black shadow-md hover:bg-warning/90 transition-transform active:scale-95"
+                >
+                  Review Two-Party Alert →
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* High Priority Live Alert Banner */}
           {state.activeAlert && (
             <div className="mb-6 animate-pulse rounded-2xl border border-danger/60 bg-danger/15 p-4 shadow-lg shadow-danger/10 backdrop-blur-md">

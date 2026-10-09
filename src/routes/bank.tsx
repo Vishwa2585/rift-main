@@ -12,7 +12,10 @@ import {
   nextTxId,
   evaluateTransferPreflight,
   type PreflightRuleCheck,
+  type RecipientType,
+  type TransactionState,
 } from "@/lib/rift/store";
+import { computeTransactionDigest } from "@/lib/rift/engine";
 import { ASSETS, fmtMoney, simHash, type ChainId } from "@/lib/rift/data";
 import { useNfc, generateRiftKeyPayload } from "@/lib/rift/nfc";
 import { cn } from "@/lib/utils";
@@ -32,6 +35,10 @@ import {
   CheckCircle2,
   RefreshCw,
   ExternalLink,
+  AlertTriangle,
+  Clock,
+  Lock,
+  XCircle,
 } from "lucide-react";
 
 export const Route = createFileRoute("/bank")({
@@ -68,6 +75,7 @@ function Bank() {
   const [amount, setAmount] = useState(50_000_000);
   const [destChain, setDestChain] = useState<ChainId>("arbitrum");
   const [recipient, setRecipient] = useState("0x7a41…e9c0"); // Apex Global Settlement demo receiver address
+  const [recipientType, setRecipientType] = useState<RecipientType>("REGISTERED");
   const [hasNfcOptIn, setHasNfcOptIn] = useState(true);
   const [txId, setTxId] = useState<string | null>(null);
 
@@ -109,13 +117,22 @@ function Bank() {
   const preparePreview = () => {
     const id = nextTxId();
     setTxId(id);
-    const generatedKey = generateRiftKeyPayload({
+
+    // Cryptographic transaction-bound payload
+    const nonce = `NONCE-${Math.floor(100000 + Math.random() * 900000)}`;
+    const expiresAt = Date.now() + 1000 * 60 * 15; // 15 min expiry
+    const digest = computeTransactionDigest({
       txId: id,
+      sourceChain: "ethereum",
+      destChain,
       amount,
-      token: asset,
+      asset,
       recipient,
-      sender: client.name,
+      nonce,
+      expiresAt,
     });
+    const generatedKey = `RIFT-KEY:v2:${id}:${nonce}:${recipient}:${amount}:${asset}:${digest.slice(0, 16)}`;
+
     setCurrentKeyPayload(generatedKey);
     setNfcWriteSuccess(false);
     setStep("preview");
@@ -167,6 +184,7 @@ function Bank() {
         amount,
         destChain,
         recipient,
+        recipientType,
         stage: "CREATED" as const,
         status: "pending" as const,
         nfcVerified: false,
@@ -178,6 +196,13 @@ function Bank() {
       },
     });
 
+    if (hasNfcOptIn) {
+      dispatch({
+        type: "GENERATE_RIFT_KEY_CHALLENGE",
+        txId: id,
+      });
+    }
+
     dispatch({
       type: "ADD_EVENT",
       event: makeEvent("rift-bank", "TRANSFER", id, `Cross-chain transfer initiated: ${fmtMoney(amount)} ${asset} → ${destChain} [Simulated]`),
@@ -187,7 +212,7 @@ function Bank() {
       type: "AUDIT",
       actor: "RIFT BANK",
       action: "TRANSFER_CREATED",
-      detail: `${id} · ${fmtMoney(amount)} ${asset} authorized to ${recipient}`,
+      detail: `${id} · ${fmtMoney(amount)} ${asset} authorized to ${recipient} [Type: ${recipientType}]`,
     });
 
     setStep("lifecycle");
@@ -205,7 +230,7 @@ function Bank() {
       dispatch({ type: "SET_STAGE", txId: id, stage: "AWAITING_AUTHORIZATION" });
       dispatch({
         type: "ADD_EVENT",
-        event: makeEvent("rift-watch", "ESCROW", id, `Collateral locked. Escrow awaiting receiver NFC card tap for final settlement`),
+        event: makeEvent("rift-watch", "ESCROW", id, `Collateral locked. Escrow awaiting receiver authorization for settlement`),
       });
     }, 2600);
   };
@@ -216,15 +241,26 @@ function Bank() {
     setIsValidatingNfc(true);
     try {
       const readRes = await scanNfcCard(true);
-      const payload = readRes?.payload || state.virtualNfcCard.payload || "RIFT-KEY:v2:AUTH-VERIFIED";
+      const targetTx = state.transfers.find((t) => t.id === targetTxId);
 
-      // Dispatch settlement confirmation
-      dispatch({
-        type: "RECEIVER_VALIDATE_NFC",
-        txId: targetTxId,
-        payload,
-        serial: readRes?.serialNumber || state.virtualNfcCard.serial,
-      });
+      if (targetTx?.keyChallenge) {
+        // Cryptographic atomic challenge verification (Rule R-08 & single-use)
+        dispatch({
+          type: "VALIDATE_RIFT_KEY_CHALLENGE",
+          txId: targetTxId,
+          nonce: targetTx.keyChallenge.nonce,
+          digest: targetTx.keyChallenge.digest,
+          cardSerial: readRes?.serialNumber || state.virtualNfcCard.serial || "04:A2:8B:E3:44:01",
+        });
+      } else {
+        const payload = readRes?.payload || state.virtualNfcCard.payload || "RIFT-KEY:v2:AUTH-VERIFIED";
+        dispatch({
+          type: "RECEIVER_VALIDATE_NFC",
+          txId: targetTxId,
+          payload,
+          serial: readRes?.serialNumber || state.virtualNfcCard.serial,
+        });
+      }
 
       setValidationSuccessTxId(targetTxId);
       setTimeout(() => {
@@ -234,6 +270,15 @@ function Bank() {
     } catch {
       setIsValidatingNfc(false);
     }
+  };
+
+  // Claim pending escrow reservation
+  const handleClaimPendingTransfer = (targetTxId: string) => {
+    dispatch({
+      type: "CLAIM_PENDING_TRANSFER",
+      txId: targetTxId,
+      recipientAddress: state.receiverAccount.address,
+    });
   };
 
   return (
@@ -384,22 +429,117 @@ function Bank() {
                   </Field>
 
                   <div className="sm:col-span-2">
-                    <Field label="Recipient / Beneficiary Address (Demo Receiver: Apex Settlement)">
+                    <Field label="Recipient Identity Resolution">
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecipientType("REGISTERED");
+                            setRecipient("0x7a41…e9c0");
+                          }}
+                          className={cn(
+                            "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all",
+                            recipientType === "REGISTERED"
+                              ? "border-gold bg-gold/15 text-gold"
+                              : "border-border bg-card/40 text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          Enrolled Account
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecipientType("UNREGISTERED_WALLET");
+                            setRecipient("0x3b89b274c3d82a1795bc99e6912384a5");
+                          }}
+                          className={cn(
+                            "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all",
+                            recipientType === "UNREGISTERED_WALLET"
+                              ? "border-gold bg-gold/15 text-gold"
+                              : "border-border bg-card/40 text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          Unregistered Wallet
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecipientType("PENDING_CLAIM");
+                            setRecipient("claim@apex-partner.internal");
+                          }}
+                          className={cn(
+                            "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all",
+                            recipientType === "PENDING_CLAIM"
+                              ? "border-gold bg-gold/15 text-gold"
+                              : "border-border bg-card/40 text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          Pending-Claim Escrow
+                        </button>
+                      </div>
+
                       <div className="flex gap-2">
                         <input
                           value={recipient}
                           onChange={(e) => setRecipient(e.target.value)}
                           className={cn(inputCls, "font-mono text-xs")}
+                          placeholder="0x… or claim email"
                         />
                         <button
                           type="button"
-                          onClick={() => setRecipient("0x7a41…e9c0")}
+                          onClick={() => {
+                            setRecipientType("REGISTERED");
+                            setRecipient("0x7a41…e9c0");
+                          }}
                           className="shrink-0 rounded-xl border border-gold/30 bg-gold/10 px-3 text-[11px] font-semibold text-gold transition-colors hover:bg-gold/20"
                         >
-                          Apex Demo
+                          Apex Default
                         </button>
                       </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {recipientType === "REGISTERED" && "Enrolled institutional account: instant cross-chain correlation."}
+                        {recipientType === "UNREGISTERED_WALLET" && "Unregistered wallet: automatically creates counterparty ledger record (CPT-xxxx)."}
+                        {recipientType === "PENDING_CLAIM" && "No on-chain address: reserves funds under escrow pending recipient KYC claim (CLM-xxxx)."}
+                      </p>
                     </Field>
+
+                    {/* Quick Demo Test Scenario Shortcuts */}
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px]">
+                      <span className="text-muted-foreground font-semibold uppercase tracking-wider">Test Scenario:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAmount(50_000_000);
+                          setRecipient("0x7a41…e9c0");
+                          setRecipientType("REGISTERED");
+                        }}
+                        className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-emerald-400 hover:bg-emerald-500/20"
+                      >
+                        ✓ Normal Clean (Settles)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAmount(50_000_000);
+                          setRecipient("0x7f3910b8f0412b591b92c4a919");
+                          setRecipientType("UNREGISTERED_WALLET");
+                        }}
+                        className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-rose-300 hover:bg-rose-500/20"
+                      >
+                        ⚠ Flagged Beneficiary (R-03 Alert)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAmount(95_000_000);
+                          setRecipient("0x7a41…e9c0");
+                          setRecipientType("REGISTERED");
+                        }}
+                        className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-amber-300 hover:bg-amber-500/20"
+                      >
+                        ⚠ Volume Spike (R-09 Alert)
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -560,22 +700,95 @@ function Bank() {
           {step === "lifecycle" && tx && (
             <div className="grid gap-6 lg:grid-cols-5">
               <GlassPanel className="p-6 lg:col-span-3">
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">Cross-Chain Execution Pipeline</span>
                     <h3 className="font-display text-2xl font-bold">{tx.id}</h3>
                   </div>
-                  <StatusPill status={tx.status} />
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                      tx.state === "SETTLED" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
+                      tx.state === "PENDING_PARTY_APPROVAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse" :
+                      tx.state === "REJECTED" ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" :
+                      tx.state === "EXPIRED" ? "bg-orange-500/20 text-orange-400 border border-orange-500/30" :
+                      tx.state === "PENDING_RIFT_KEY" ? "bg-gold/20 text-gold border border-gold/30" :
+                      "bg-secondary text-muted-foreground border border-border"
+                    )}>
+                      {tx.state || "PENDING"}
+                    </span>
+                    <StatusPill status={tx.status} />
+                  </div>
                 </div>
-                <p className="mb-6 text-xs text-muted-foreground">
+
+                <p className="mb-4 text-xs text-muted-foreground">
                   {fmtMoney(tx.amount)} {tx.asset} · {client.name} → {recipient}
+                  {tx.recipientType && ` · ${tx.recipientType}`}
+                  {tx.counterpartyId && ` (${tx.counterpartyId})`}
+                  {tx.claimToken && ` (${tx.claimToken})`}
                 </p>
+
+                {/* State-Machine Enforced Decision Banners */}
+                {tx.state === "PENDING_PARTY_APPROVAL" && (
+                  <div className="mb-5 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <AlertTriangle className="size-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-amber-300">TWO-PARTY SECURITY ALERT TRIGGERED</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {tx.twoPartyApproval?.reason || "Suspicious invariant anomaly detected. Both parties must review and consent before execution."}
+                          </p>
+                        </div>
+                      </div>
+                      <GoldButton onClick={() => dispatch({ type: "SET_ACTIVE_APPROVAL", txId: tx.id })}>
+                        Review & Submit Consent
+                      </GoldButton>
+                    </div>
+                  </div>
+                )}
+
+                {tx.state === "REJECTED" && (
+                  <div className="mb-5 rounded-xl border border-rose-500/50 bg-rose-500/10 p-3.5 text-xs text-rose-300 flex items-center gap-2.5">
+                    <XCircle className="size-4 text-rose-400 shrink-0" />
+                    <div>
+                      <p className="font-bold">EXECUTION TERMINATED</p>
+                      <p className="text-[11px] text-rose-400/80">
+                        A transaction participant rejected the authorization request. Protected operation held according to policy.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {tx.state === "EXPIRED" && (
+                  <div className="mb-5 rounded-xl border border-orange-500/50 bg-orange-500/10 p-3.5 text-xs text-orange-300 flex items-center gap-2.5">
+                    <Clock className="size-4 text-orange-400 shrink-0" />
+                    <div>
+                      <p className="font-bold">RESPONSE DEADLINE EXPIRED</p>
+                      <p className="text-[11px] text-orange-400/80">
+                        Server-side timeout enforced: silence is not consent. Protected destination execution blocked.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {tx.state === "SETTLED" && (
+                  <div className="mb-5 rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-3.5 text-xs text-emerald-300 flex items-center gap-2.5">
+                    <CheckCircle2 className="size-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <p className="font-bold">TRANSACTION SETTLED & VERIFIED</p>
+                      <p className="text-[11px] text-emerald-400/80">
+                        Security invariant checks passed. Authoritative ledger entry and on-chain destination execution finalized.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Animated Lifecycle Steps with Real-time Rule Check Callouts */}
                 <ol className="space-y-2">
                   {STAGES.map((s, i) => {
-                    const done = i < stageIdx;
-                    const current = i === stageIdx;
+                    const done = i < stageIdx || tx.state === "SETTLED";
+                    const current = i === stageIdx && tx.state !== "SETTLED";
                     return (
                       <li
                         key={s}
@@ -597,8 +810,8 @@ function Bank() {
                           </p>
                           {current && (
                             <p className="text-[11px] text-muted-foreground">
-                              {s === "RISK_ASSESSMENT" && "Evaluating RIFT invariant rules R-01 through R-08 in real-time…"}
-                              {s === "AWAITING_AUTHORIZATION" && "Source debit finalized. Awaiting receiver NFC card tap for settlement."}
+                              {s === "RISK_ASSESSMENT" && "Evaluating RIFT invariant rules R-01 through R-09 in real-time…"}
+                              {s === "AWAITING_AUTHORIZATION" && "Source debit finalized. Awaiting receiver authorization for settlement."}
                               {s === "FINAL_RESULT" && "Deposit settled and verified on destination chain."}
                             </p>
                           )}
@@ -614,9 +827,9 @@ function Bank() {
                 <div className="mt-6 rounded-2xl border border-gold/30 bg-gold/10 p-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                      <p className="text-xs font-bold text-gold">Ready for Receiver Settlement</p>
+                      <p className="text-xs font-bold text-gold">Receiver Settlement Portal</p>
                       <p className="text-[11px] text-muted-foreground">
-                        The transfer is held in cross-chain escrow. Switch to the Demo Receiver account to tap the NFC card and settle.
+                        Switch to the Demo Receiver account to tap the NFC card, claim escrow, or submit counterparty approval.
                       </p>
                     </div>
                     <GoldButton onClick={() => setPortalTab("receiver")}>
@@ -714,58 +927,102 @@ function Bank() {
               </GlassPanel>
             ) : (
               <div className="space-y-3">
-                {state.receiverAccount.pendingInbound.map((inbound) => (
-                  <GlassPanel
-                    key={inbound.txId}
-                    className={cn(
-                      "p-6 transition-all",
-                      !inbound.settled ? "border-gold/50 bg-gold/5 shadow-lg shadow-gold/5" : "border-border/60 bg-card/40"
-                    )}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className={cn(
-                            "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                            inbound.settled ? "bg-emerald-500/20 text-emerald-400" : "bg-gold/20 text-gold animate-pulse"
-                          )}>
-                            {inbound.settled ? "SETTLED & CREDITED" : "AWAITING NFC KEY VALIDATION"}
-                          </span>
-                          <Mono className="text-xs text-muted-foreground">{inbound.txId}</Mono>
-                        </div>
+                {state.receiverAccount.pendingInbound.map((inbound) => {
+                  const matchingTx = state.transfers.find((t) => t.id === inbound.txId);
+                  const isAwaitingApproval = matchingTx?.state === "PENDING_PARTY_APPROVAL";
+                  const isRejected = matchingTx?.state === "REJECTED";
+                  const isExpired = matchingTx?.state === "EXPIRED";
+                  const isPendingClaim = matchingTx?.recipientType === "PENDING_CLAIM" && !inbound.settled;
 
-                        <p className="font-display text-2xl font-bold text-foreground">
-                          {fmtMoney(inbound.amount)} {inbound.asset}
-                        </p>
-
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <span>From: <strong className="text-foreground">{inbound.senderName}</strong></span>
-                          <span>· Dest: <strong className="text-foreground uppercase">{inbound.destChain}</strong></span>
-                          <span>· Time: {new Date(inbound.createdAt).toLocaleTimeString()}</span>
-                        </div>
-                      </div>
-
-                      {/* Action Button: Tap NFC Card to Validate */}
-                      <div>
-                        {inbound.settled ? (
-                          <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-400">
-                            <CheckCircle2 className="size-4" />
-                            Settled via RIFT Key Tag
+                  return (
+                    <GlassPanel
+                      key={inbound.txId}
+                      className={cn(
+                        "p-6 transition-all",
+                        isAwaitingApproval
+                          ? "border-amber-500/60 bg-amber-500/10 shadow-lg shadow-amber-500/10"
+                          : !inbound.settled
+                          ? "border-gold/50 bg-gold/5 shadow-lg shadow-gold/5"
+                          : "border-border/60 bg-card/40"
+                      )}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                              inbound.settled ? "bg-emerald-500/20 text-emerald-400" :
+                              isAwaitingApproval ? "bg-amber-500/20 text-amber-300 animate-pulse" :
+                              isRejected ? "bg-rose-500/20 text-rose-400" :
+                              isExpired ? "bg-orange-500/20 text-orange-400" :
+                              isPendingClaim ? "bg-gold/20 text-gold" :
+                              "bg-gold/20 text-gold animate-pulse"
+                            )}>
+                              {inbound.settled ? "SETTLED & CREDITED" :
+                               isAwaitingApproval ? "TWO-PARTY CONSENT REQUIRED" :
+                               isRejected ? "REJECTED & HELD" :
+                               isExpired ? "DEADLINE EXPIRED" :
+                               isPendingClaim ? "ESCROW RESERVED (PENDING CLAIM)" :
+                               "AWAITING NFC KEY VALIDATION"}
+                            </span>
+                            <Mono className="text-xs text-muted-foreground">{inbound.txId}</Mono>
                           </div>
-                        ) : (
-                          <GoldButton
-                            onClick={() => handleReceiverValidateNfc(inbound.txId)}
-                            disabled={isValidatingNfc && validatingTxId === inbound.txId}
-                            className="w-full sm:w-auto"
-                          >
-                            <Nfc className="size-4" />
-                            {isValidatingNfc && validatingTxId === inbound.txId
-                              ? "Validating Card…"
-                              : "Validate & Settle via NFC Card"}
-                          </GoldButton>
-                        )}
+
+                          <p className="font-display text-2xl font-bold text-foreground">
+                            {fmtMoney(inbound.amount)} {inbound.asset}
+                          </p>
+
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                            <span>From: <strong className="text-foreground">{inbound.senderName}</strong></span>
+                            <span>· Dest: <strong className="text-foreground uppercase">{inbound.destChain}</strong></span>
+                            <span>· Time: {new Date(inbound.createdAt).toLocaleTimeString()}</span>
+                            {matchingTx?.claimToken && (
+                              <span className="text-gold font-mono">· Claim Token: {matchingTx.claimToken}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons: Two-Party Consent / Claim / Tap NFC Card */}
+                        <div>
+                          {inbound.settled ? (
+                            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-400">
+                              <CheckCircle2 className="size-4" />
+                              Settled via RIFT Key Tag
+                            </div>
+                          ) : isAwaitingApproval ? (
+                            <GoldButton
+                              onClick={() => dispatch({ type: "SET_ACTIVE_APPROVAL", txId: inbound.txId })}
+                              className="w-full sm:w-auto"
+                            >
+                              <ShieldAlert className="size-4" />
+                              Review Security Alert & Consent
+                            </GoldButton>
+                          ) : isPendingClaim ? (
+                            <GoldButton
+                              onClick={() => handleClaimPendingTransfer(inbound.txId)}
+                              className="w-full sm:w-auto"
+                            >
+                              <CheckCircle2 className="size-4" />
+                              Claim Escrow to Apex Account
+                            </GoldButton>
+                          ) : isRejected || isExpired ? (
+                            <div className="rounded-xl border border-border bg-secondary/30 px-3.5 py-2 text-xs text-muted-foreground">
+                              Operation Held by Security Policy
+                            </div>
+                          ) : (
+                            <GoldButton
+                              onClick={() => handleReceiverValidateNfc(inbound.txId)}
+                              disabled={isValidatingNfc && validatingTxId === inbound.txId}
+                              className="w-full sm:w-auto"
+                            >
+                              <Nfc className="size-4" />
+                              {isValidatingNfc && validatingTxId === inbound.txId
+                                ? "Validating Card…"
+                                : "Validate & Settle via NFC Card"}
+                            </GoldButton>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
                     {/* Verification receipt if just validated */}
                     {validationSuccessTxId === inbound.txId && (
@@ -780,7 +1037,8 @@ function Bank() {
                       </div>
                     )}
                   </GlassPanel>
-                ))}
+                );
+              })}
               </div>
             )}
           </div>
