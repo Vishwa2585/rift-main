@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BankRouteImport } from './routes/bank'
 import { Route as CommandRoomRouteImport } from './routes/command-room'
+import { Route as IncidentsRouteImport } from './routes/incidents'
 import { Route as OverviewRouteImport } from './routes/overview'
+import { Route as ReplayRouteImport } from './routes/replay'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 
 const IndexRoute = IndexRouteImport.update({
@@ -30,9 +32,19 @@ const CommandRoomRoute = CommandRoomRouteImport.update({
   path: '/command-room',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IncidentsRoute = IncidentsRouteImport.update({
+  id: '/incidents',
+  path: '/incidents',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OverviewRoute = OverviewRouteImport.update({
   id: '/overview',
   path: '/overview',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReplayRoute = ReplayRouteImport.update({
+  id: '/replay',
+  path: '/replay',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TransactionsRoute = TransactionsRouteImport.update({
@@ -45,14 +57,18 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/bank': typeof BankRoute
   '/command-room': typeof CommandRoomRoute
+  '/incidents': typeof IncidentsRoute
   '/overview': typeof OverviewRoute
+  '/replay': typeof ReplayRoute
   '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bank': typeof BankRoute
   '/command-room': typeof CommandRoomRoute
+  '/incidents': typeof IncidentsRoute
   '/overview': typeof OverviewRoute
+  '/replay': typeof ReplayRoute
   '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesById {
@@ -60,23 +76,48 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/bank': typeof BankRoute
   '/command-room': typeof CommandRoomRoute
+  '/incidents': typeof IncidentsRoute
   '/overview': typeof OverviewRoute
+  '/replay': typeof ReplayRoute
   '/transactions': typeof TransactionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/bank' | '/command-room' | '/overview' | '/transactions'
+  fullPaths:
+    | '/'
+    | '/bank'
+    | '/command-room'
+    | '/incidents'
+    | '/overview'
+    | '/replay'
+    | '/transactions'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/bank' | '/command-room' | '/overview' | '/transactions'
+  to:
+    | '/'
+    | '/bank'
+    | '/command-room'
+    | '/incidents'
+    | '/overview'
+    | '/replay'
+    | '/transactions'
   id:
-    '__root__' | '/' | '/bank' | '/command-room' | '/overview' | '/transactions'
+    | '__root__'
+    | '/'
+    | '/bank'
+    | '/command-room'
+    | '/incidents'
+    | '/overview'
+    | '/replay'
+    | '/transactions'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BankRoute: typeof BankRoute
   CommandRoomRoute: typeof CommandRoomRoute
+  IncidentsRoute: typeof IncidentsRoute
   OverviewRoute: typeof OverviewRoute
+  ReplayRoute: typeof ReplayRoute
   TransactionsRoute: typeof TransactionsRoute
 }
 
@@ -103,11 +144,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommandRoomRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/incidents': {
+      id: '/incidents'
+      path: '/incidents'
+      fullPath: '/incidents'
+      preLoaderRoute: typeof IncidentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/overview': {
       id: '/overview'
       path: '/overview'
       fullPath: '/overview'
       preLoaderRoute: typeof OverviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/replay': {
+      id: '/replay'
+      path: '/replay'
+      fullPath: '/replay'
+      preLoaderRoute: typeof ReplayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/transactions': {
@@ -124,7 +179,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BankRoute: BankRoute,
   CommandRoomRoute: CommandRoomRoute,
+  IncidentsRoute: IncidentsRoute,
   OverviewRoute: OverviewRoute,
+  ReplayRoute: ReplayRoute,
   TransactionsRoute: TransactionsRoute,
 }
 export const routeTree = rootRouteImport
