@@ -50,6 +50,10 @@ function Bank() {
   };
 
   const createTransfer = () => {
+    if (state.operationsHeld) {
+      alert("DEMONSTRATION CONTAINMENT ACTIVE: New transfers are held by incident response.");
+      return;
+    }
     const id = nextTxId();
     dispatch({
       type: "CREATE_TRANSFER",
@@ -59,7 +63,7 @@ function Bank() {
         sourceHash: simHash(`${id}:src`), createdAt: Date.now(),
       },
     });
-    dispatch({ type: "ADD_EVENT", event: makeEvent("rift-bank", "TRANSFER", id, `Transfer created: ${fmtMoney(amount)} ${asset} → ${destChain} (simulated)`) });
+    dispatch({ type: "ADD_EVENT", event: makeEvent("rift-bank", "TRANSFER", id, `Transfer created: ${fmtMoney(amount)} ${asset} → ${destChain} [Simulated]`) });
     dispatch({ type: "AUDIT", actor: "RIFT BANK", action: "TRANSFER_CREATED", detail: `${id} · ${fmtMoney(amount)} ${asset}` });
     setTxId(id);
     setStep("lifecycle");
@@ -87,8 +91,14 @@ function Bank() {
     setTimeout(() => dispatch({ type: "SET_STAGE", txId, stage: "CORRELATION" }), 4400);
     setTimeout(() => {
       dispatch({ type: "SET_STAGE", txId, stage: "FINAL_RESULT" });
-      dispatch({ type: "SET_STATUS", txId, status: "completed" });
-      dispatch({ type: "AUDIT", actor: "RIFT BANK", action: "TRANSFER_COMPLETED", detail: `${txId} settled (simulated)` });
+      // Security invariant: A valid NFC approval must never automatically override a high-risk security flag
+      if (tx?.status !== "flagged") {
+        dispatch({ type: "SET_STATUS", txId, status: "completed" });
+        dispatch({ type: "AUDIT", actor: "RIFT BANK", action: "TRANSFER_COMPLETED", detail: `${txId} settled (simulated)` });
+      } else {
+        dispatch({ type: "ADD_EVENT", event: makeEvent("rift-watch", "ALERT", txId, "NFC read recorded, but transfer remains flagged due to active high-risk assessment") });
+        dispatch({ type: "AUDIT", actor: "RIFT SECURITY", action: "OVERRIDE_REJECTED", detail: `${txId} flagged transfer cannot be overridden by NFC key` });
+      }
     }, 5800);
   };
 

@@ -146,8 +146,77 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       <main className="lg:pl-64">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
-          <div className="mb-6 flex items-center justify-between">
-            <SimBadge label="SIMULATION ENVIRONMENT" />
+          {/* High Priority Live Alert Banner */}
+          {state.activeAlert && (
+            <div className="mb-6 animate-pulse rounded-2xl border border-danger/60 bg-danger/15 p-4 shadow-lg shadow-danger/10 backdrop-blur-md">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex size-3 rounded-full bg-danger ring-4 ring-danger/30" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md bg-danger px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                        {state.activeAlert.severity} ALERT
+                      </span>
+                      <span className="text-xs font-semibold text-danger">Risk {state.activeAlert.score}/100</span>
+                      <span className="text-[11px] text-muted-foreground">· Tx {state.activeAlert.txId}</span>
+                    </div>
+                    <p className="mt-1 text-sm font-medium text-foreground">
+                      Suspected Anomaly: {state.activeAlert.title}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigate({ to: "/incidents" });
+                    }}
+                    className="inline-flex items-center justify-center rounded-xl bg-danger px-3.5 py-1.5 text-xs font-semibold text-white shadow-md transition-colors hover:bg-danger/90"
+                  >
+                    Investigate Incident →
+                  </button>
+                  <button
+                    onClick={() => dispatch({ type: "DISMISS_ALERT" })}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                    title="Dismiss alert banner"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Demonstration Operations Containment Banner */}
+          {state.operationsHeld && (
+            <div className="mb-6 rounded-2xl border border-warning/60 bg-warning/10 p-3.5 backdrop-blur-md">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 text-xs font-medium text-warning">
+                  <span className="size-2 rounded-full bg-warning" />
+                  <span>DEMONSTRATION CONTAINMENT ACTIVE: New bank operations and transfers are currently held.</span>
+                </div>
+                <button
+                  onClick={() => dispatch({ type: "TOGGLE_OPERATIONS_HELD" })}
+                  className="rounded-lg border border-warning/40 bg-warning/20 px-2.5 py-1 text-[11px] font-semibold text-warning hover:bg-warning/30"
+                >
+                  Resume Operations
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <SimBadge label={`DATA SOURCE: ${state.dataSource}`} />
+              <span className={cn(
+                "rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider",
+                state.scanningState === "SCANNING" ? "border-success/40 bg-success/10 text-success" :
+                state.scanningState === "ALERT_GENERATED" ? "border-danger/40 bg-danger/10 text-danger" :
+                state.scanningState === "CORRELATING" ? "border-gold/40 bg-gold/10 text-gold" :
+                "border-border bg-secondary/40 text-muted-foreground"
+              )}>
+                {state.scanningState}
+              </span>
+            </div>
             <button
               onClick={() => navigate({ to: "/" })}
               className="flex items-center gap-1.5 text-[11px] text-muted-foreground transition-colors hover:text-gold"

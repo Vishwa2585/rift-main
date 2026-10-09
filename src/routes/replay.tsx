@@ -37,7 +37,7 @@ function Replay() {
   const [pos, setPos] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const scenario = SCENARIOS.find((s) => s.id === "sc-replay-auth")!;
+  const scenario = SCENARIOS.find((s: { id: string }) => s.id === "sc-replay-auth")!;
 
   useEffect(() => {
     if (!playing) return;
