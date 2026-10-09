@@ -65,17 +65,17 @@ function buildGraph(attackCount: number, flagged: boolean): { nodes: Node[]; lin
   const byId: Record<string, Node> = Object.fromEntries(nodes.map((n) => [n.id, n]));
   const intra: [string, string][] = [["src-origin", "src-bridge"], ["src-bridge", "src-relayer"], ["dst-mint", "dst-vault"], ["dst-vault", "dst-beneficiary"]];
   for (const [a, b] of intra) {
-    links.push({ from: byId[a].pos, to: byId[b].pos, broken: false, label: `${a} → ${b}` });
+    links.push({ from: byId[a]!.pos, to: byId[b]!.pos, broken: false, label: `${a} → ${b}` });
   }
   // cross-chain correlation
   links.push({
-    from: byId["src-relayer"].pos, to: byId["dst-mint"].pos,
+    from: byId["src-relayer"]!.pos, to: byId["dst-mint"]!.pos,
     broken: flagged,
     label: flagged ? "BROKEN CORRELATION — destination event missing (simulated anomaly)" : "Verified correlation (simulated)",
   });
   if (attackCount > 1) {
     links.push({
-      from: byId["src-bridge"].pos, to: byId["dst-beneficiary"].pos,
+      from: byId["src-bridge"]!.pos, to: byId["dst-beneficiary"]!.pos,
       broken: true,
       label: "BROKEN PATH — replayed message ID detected (simulated anomaly)",
     });
