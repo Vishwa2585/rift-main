@@ -1,24 +1,27 @@
-# Fast Track Start
+# RIFT — Real-Time Interchain Fraud Tracking
 
-start, follow he fastest approach
+RIFT is a real-time interchain fraud-tracking command centre demonstration. It features a simulated bank, live transfer lifecycle, NFC authorization, and a 3D cross-chain fracture map.
 
-This project was built with [Lovable](https://lovable.dev).
+## Tech Stack
 
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/6188d7ad-a9d1-45c9-8197-3d133ae53551).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+- **Framework**: TanStack Start (React 19)
+- **Styling**: Tailwind CSS v4, Lucide React icons, Radix UI primitives
+- **3D Graphics**: Three.js, React Three Fiber, React Three Drei
+- **Routing & State**: TanStack Router, TanStack Query
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requires Node.js (v20+ recommended).
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+npm install
 npm run dev
 ```
+
+### Scripts
+
+- `npm run dev`: Start development server
+- `npm run build`: Build production bundle
+- `npm run preview`: Preview production build
+- `npm run test`: Run tests with Vitest
+- `npm run lint`: Lint code with ESLint
