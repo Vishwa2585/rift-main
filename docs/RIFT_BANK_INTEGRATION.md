@@ -369,26 +369,42 @@ RIFT evaluates every transaction intent and correlated bridge pair against the o
 
 ---
 
-## 7. Environment Variables & Deployment
+## 7. Environment Variables & Secure Deployment
 
-| Variable | Description | Default (Local / Test) |
-| :--- | :--- | :--- |
-| `RIFT_API_KEY` | Server-to-server secret for RIFT Bank API calls | `rift_live_secret_2026` |
-| `RIFT_WEBHOOK_SECRET` | HMAC-SHA256 signing secret for bridge webhooks | `rift_webhook_signing_secret_2026` |
-| `PORT` | Local application server port | `3000` |
-| `NODE_ENV` | Runtime environment (`development`, `production`, `test`) | `development` |
+| Variable | Description | Default (Local / Test) | Security Scope |
+| :--- | :--- | :--- | :--- |
+| `RIFT_CORE_URL` | Base URL for RIFT Core detection backend | `http://localhost:3000/api/v1` | Server-Side Adapter / Client |
+| `RIFT_API_KEY` | Server-to-server secret for RIFT Bank API calls (`x-rift-api-key`) | `rift_sec_dev_8f29c41793b5e021a64d82f7105b3c4e` | **Server-Only** (Never expose to UI) |
+| `RIFT_WEBHOOK_SECRET` | HMAC-SHA256 signing secret for bridge webhooks | `rift_whsec_dev_3e8a10427b9c51f08d62a4e9b7301c5f` | **Server-Only** (Never expose to UI) |
+| `RIFT_BANK_SERVICE_URL` | Deployed URL of external RIFT Bank application | _(Required if hosted separately)_ | Server-Side / Microservice |
+| `SUPABASE_URL` | Supabase endpoint for RIFT Bank database | _(Required for Supabase bank)_ | Backend / Data Layer |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for Supabase administrative tasks | _(Required for Supabase bank)_ | **Server-Only** (Never expose to UI) |
+| `PORT` | Local application server port | `3000` | Process Environment |
+| `NODE_ENV` | Runtime environment (`development`, `production`, `test`) | `development` | Process Environment |
+
+> [!IMPORTANT]
+> **Privilege Separation & Bank Adapter**:  
+> The browser frontend never directly attaches or stores `RIFT_API_KEY` or `RIFT_WEBHOOK_SECRET`. All client-initiated operations route through the Bank Server-Side API Adapter (`/api/bank/*`), which manages session authorization and attaches privileged credentials server-to-server.
+> Deprecated legacy credentials (`rift_live_secret_2026`, `rift_webhook_signing_secret_2026`) are rejected with `401 Unauthorized` / `403 Forbidden`.
+
+> [!NOTE]
+> **Blockchain Provenance**:  
+> All source hashes, destination hashes, block numbers, and confirmation counters are explicitly tagged with `provenance: "CONTROLLED_SIMULATION"` and `isSimulated: true`. Controlled demonstration fixtures adhere to Rule R-09 (`Synthetic Data Provenance`).
 
 ---
 
 ## 8. Verification & Test Commands
 
-Run the comprehensive test suite verifying the RIFT Bank integration contract:
+Run the comprehensive test suite verifying the RIFT Bank integration contract over live HTTP sockets:
 
 ```bash
-# Run the complete test suite (26 passing tests)
+# Run the complete test suite (39 passing tests)
 npx vitest run
 
-# Run API Server integration and security tests specifically
+# Run real HTTP Bank integration tests specifically
+npx vitest run src/test/bank-integration.test.ts
+
+# Run API Server security & REST API tests
 npx vitest run src/test/api-server.test.ts
 
 # Verify type safety and zero compilation errors

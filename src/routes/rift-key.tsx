@@ -1,16 +1,22 @@
+import React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppLayout } from "@/components/rift/Layout";
-import { GlassPanel, SectionTitle, Mono, StatusPill, GhostButton } from "@/components/rift/ui";
+import { GlassPanel, SectionTitle, Mono, StatusPill, GhostButton, GoldButton } from "@/components/rift/ui";
 import { NfcPanel } from "@/components/rift/NfcPanel";
 import { useRift } from "@/lib/rift/store";
 import { ENROLLED_DEVICES } from "@/lib/rift/data";
+import { KeyRound, Lock, ShieldCheck, Cpu } from "lucide-react";
 
 export const Route = createFileRoute("/rift-key")({
   ssr: false,
   head: () => ({
     meta: [
       { title: "RIFT Key — Physical NFC Authorization" },
-      { name: "description", content: "Read a real NFC tag with Web NFC and validate it against the enrolled demo device registry." },
+      {
+        name: "description",
+        content:
+          "Read a real NFC tag with Web NFC and validate it against the enrolled demo device registry.",
+      },
       { property: "og:title", content: "RIFT Key — Physical NFC Authorization" },
       { property: "og:description", content: "Real NFC tag reading for transfer authorization." },
       { property: "og:type", content: "website" },
@@ -20,13 +26,40 @@ export const Route = createFileRoute("/rift-key")({
   component: RiftKey,
 });
 
-import { KeyRound, ShieldCheck, Lock, CheckCircle2, AlertTriangle } from "lucide-react";
-
 function RiftKey() {
   const { state, dispatch } = useRift();
-  const pending = state.transfers.find(
-    (t) => t.state === "PENDING_RIFT_KEY" || t.stage === "AWAITING_AUTHORIZATION"
+  const transfers = state?.transfers || [];
+  const consumedAuthNonces = state?.consumedAuthNonces || [];
+
+  const pending = transfers.find(
+    (t) => t && (t.state === "PENDING_RIFT_KEY" || t.stage === "AWAITING_AUTHORIZATION"),
   );
+
+  const handleSimulateKeyTap = () => {
+    if (!pending) return;
+    dispatch({
+      type: "AUDIT",
+      actor: "RIFT KEY SIMULATOR",
+      action: "TAG_TAP",
+      detail: `Programmed RIFT Key tap executed for transfer ${pending.id}`,
+    });
+
+    if (pending.keyChallenge) {
+      dispatch({
+        type: "VALIDATE_RIFT_KEY_CHALLENGE",
+        txId: pending.id,
+        nonce: pending.keyChallenge.nonce,
+        digest: pending.keyChallenge.digest,
+        cardSerial: "04:A2:8B:E3:44:01",
+      });
+    } else {
+      dispatch({
+        type: "NFC_VERIFIED",
+        txId: pending.id,
+        payload: "RIFT-KEY:v2:AUTH",
+      });
+    }
+  };
 
   return (
     <AppLayout>
@@ -56,11 +89,32 @@ function RiftKey() {
                     cardSerial: r.serialNumber || "04:A2:8B:E3:44:01",
                   });
                 } else {
-                  dispatch({ type: "NFC_VERIFIED", txId: pending.id, payload: r.payload || "RIFT-KEY:v2:AUTH" });
+                  dispatch({
+                    type: "NFC_VERIFIED",
+                    txId: pending.id,
+                    payload: r.payload || "RIFT-KEY:v2:AUTH",
+                  });
                 }
               }
             }}
           />
+
+          {/* Quick Hardware Simulator for non-Android / Desktop */}
+          {pending && (
+            <div className="mt-4 rounded-xl border border-gold/30 bg-gold/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Cpu className="size-3.5 text-gold" /> Desktop Testing Simulator
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  No physical Web NFC hardware attached? Validate challenge using enrolled demo credentials.
+                </p>
+              </div>
+              <GoldButton onClick={handleSimulateKeyTap} className="shrink-0 text-xs py-1.5 px-3">
+                <ShieldCheck className="size-3.5 mr-1" /> Tap Simulated RIFT Key
+              </GoldButton>
+            </div>
+          )}
 
           {/* Cryptographic Replay Protection Status */}
           <div className="mt-6 rounded-2xl border border-border bg-card/40 p-4">
@@ -76,11 +130,17 @@ function RiftKey() {
               Single-use authorization tokens cannot be replayed. Every consumed nonce is atomically quarantined:
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {state.consumedAuthNonces.map((nonce) => (
-                <span key={nonce} className="rounded bg-secondary px-2 py-0.5 font-mono text-[10px] text-muted-foreground line-through">
+              {consumedAuthNonces.map((nonce) => (
+                <span
+                  key={nonce}
+                  className="rounded bg-secondary px-2 py-0.5 font-mono text-[10px] text-muted-foreground line-through"
+                >
                   {nonce}
                 </span>
               ))}
+              {consumedAuthNonces.length === 0 && (
+                <span className="text-[10px] text-muted-foreground italic">No nonces consumed yet</span>
+              )}
             </div>
           </div>
         </GlassPanel>
@@ -101,7 +161,9 @@ function RiftKey() {
                 <div className="rounded-xl border border-border bg-secondary/30 p-3 text-xs space-y-1.5">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Amount:</span>
-                    <strong className="text-gold font-mono">{pending.amount.toLocaleString()} {pending.asset}</strong>
+                    <strong className="text-gold font-mono">
+                      {(pending.amount ?? 0).toLocaleString()} {pending.asset}
+                    </strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Destination:</span>
@@ -116,8 +178,12 @@ function RiftKey() {
                 {pending.keyChallenge ? (
                   <div className="rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs space-y-1">
                     <p className="text-[10px] uppercase font-bold text-gold">Bound Cryptographic Challenge</p>
-                    <p className="text-muted-foreground text-[11px]">Nonce: <Mono className="text-foreground">{pending.keyChallenge.nonce}</Mono></p>
-                    <p className="text-muted-foreground text-[10px] truncate">SHA-256: <Mono className="text-gold">{pending.keyChallenge.digest}</Mono></p>
+                    <p className="text-muted-foreground text-[11px]">
+                      Nonce: <Mono className="text-foreground">{pending.keyChallenge.nonce}</Mono>
+                    </p>
+                    <p className="text-muted-foreground text-[10px] truncate">
+                      SHA-256: <Mono className="text-gold">{pending.keyChallenge.digest}</Mono>
+                    </p>
                   </div>
                 ) : (
                   <p className="text-[11px] text-muted-foreground">
@@ -127,8 +193,12 @@ function RiftKey() {
               </div>
             ) : (
               <div>
-                <p className="mb-3 text-sm text-muted-foreground">No transfer is waiting. Initiate one in RIFT Bank first.</p>
-                <Link to="/bank"><GhostButton>Go to RIFT Bank</GhostButton></Link>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  No transfer is waiting. Initiate one in RIFT Bank first.
+                </p>
+                <Link to="/bank">
+                  <GhostButton>Go to RIFT Bank</GhostButton>
+                </Link>
               </div>
             )}
           </GlassPanel>
@@ -136,10 +206,12 @@ function RiftKey() {
           {/* Enrolled Demo Hardware Devices */}
           <GlassPanel className="p-4 sm:p-6">
             <h3 className="mb-3 font-display text-lg font-semibold">Enrolled Demo Devices</h3>
-            {ENROLLED_DEVICES.map((d) => (
-              <div key={d.id} className="rounded-xl border border-border bg-secondary/30 p-4">
+            {(ENROLLED_DEVICES || []).map((d) => (
+              <div key={d.id} className="rounded-xl border border-border bg-secondary/30 p-4 mb-2 last:mb-0">
                 <p className="text-sm font-medium">{d.label}</p>
-                <Mono className="text-muted-foreground text-xs">{d.payload} · enrolled {d.enrolled}</Mono>
+                <Mono className="text-muted-foreground text-xs">
+                  {d.payload} · enrolled {d.enrolled}
+                </Mono>
               </div>
             ))}
           </GlassPanel>

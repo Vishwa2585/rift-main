@@ -51,7 +51,7 @@ function CommandRoom() {
     }, 600);
   };
 
-  const openIncidents = state.incidents.filter((i) => i.status === "open");
+  const openIncidents = (state.incidents || []).filter((i) => i.status === "open");
 
   return (
     <AppLayout>
@@ -233,7 +233,7 @@ function CommandRoom() {
         </div>
 
         <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-          {state.events.slice(0, 40).map((e) => (
+          {(state.events || []).slice(0, 40).map((e) => (
             <div
               key={e.id}
               className={cn(

@@ -386,12 +386,12 @@ function Incidents() {
                 </p>
 
                 <div className="space-y-3">
-                  {inc.ruleResults.filter((r) => r.triggered).map((r) => (
+                  {(inc.ruleResults || []).filter((r) => r.triggered).map((r) => (
                     <div key={r.ruleId} className="rounded-xl border border-danger/40 bg-danger/10 p-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-danger/20">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-danger">{r.ruleId}</span>
-                          <span className="font-semibold text-foreground text-sm">{r.ruleName}</span>
+                          <span className="semibold text-foreground text-sm">{r.ruleName}</span>
                         </div>
                         <span className="self-start sm:self-auto rounded bg-danger/20 px-2 py-0.5 font-mono text-xs font-bold text-danger">
                           +{r.riskContribution} PTS
@@ -414,7 +414,7 @@ function Incidents() {
                     </div>
                   ))}
 
-                  {inc.ruleResults.filter((r) => !r.triggered).map((r) => (
+                  {(inc.ruleResults || []).filter((r) => !r.triggered).map((r) => (
                     <div key={r.ruleId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 rounded-lg border border-border/60 bg-secondary/20 px-3 py-2 text-xs opacity-60">
                       <span className="text-muted-foreground">
                         <Mono className="mr-2">{r.ruleId}</Mono> {r.ruleName}: {r.reason}
@@ -440,7 +440,7 @@ function Incidents() {
               <GlassPanel className="p-4 sm:p-6">
                 <h4 className="mb-4 font-display text-lg font-bold">Investigation Audit Timeline</h4>
                 <div className="relative space-y-3 pl-4 border-l-2 border-border/80">
-                  {inc.timeline.map((entry, idx) => (
+                  {(inc.timeline || []).map((entry, idx) => (
                     <div key={idx} className="relative group">
                       <div className={cn(
                         "absolute -left-[21px] top-1 size-2.5 rounded-full ring-4 ring-background",
@@ -464,10 +464,10 @@ function Incidents() {
               <GlassPanel className="p-4 sm:p-6">
                 <h4 className="mb-3 font-display text-lg font-bold">Analyst Notes & Logged Justifications</h4>
                 <div className="space-y-2 mb-4">
-                  {inc.notes.length === 0 ? (
+                  {(inc.notes || []).length === 0 ? (
                     <p className="text-xs text-muted-foreground">No notes recorded for this incident.</p>
                   ) : (
-                    inc.notes.map((n, i) => (
+                    (inc.notes || []).map((n, i) => (
                       <div key={i} className="rounded-xl border border-border bg-secondary/30 p-3 text-xs text-foreground">
                         {n}
                       </div>

@@ -21,11 +21,14 @@ export const Route = createFileRoute("/overview")({
 
 function Overview() {
   const { state } = useRift();
+  const transfers = state.transfers || [];
+  const incidents = state.incidents || [];
+  const events = state.events || [];
   const totalAssets = CLIENTS.reduce((s, c) => s + c.accounts.reduce((a, acc) => a + acc.balance, 0), 0);
-  const volume = state.transfers.reduce((s, t) => s + t.amount, 0);
-  const openIncidents = state.incidents.filter((i) => i.status !== "resolved");
-  const unmatched = state.events.filter((e) => e.type === "ALERT").length;
-  const volumeSeries = state.events.slice(0, 14).reverse().map((_, i) => 30 + ((i * 37) % 55) + i * 4);
+  const volume = transfers.reduce((s, t) => s + t.amount, 0);
+  const openIncidents = incidents.filter((i) => i.status !== "resolved");
+  const unmatched = events.filter((e) => e.type === "ALERT").length;
+  const volumeSeries = events.slice(0, 14).reverse().map((_, i) => 30 + ((i * 37) % 55) + i * 4);
 
   return (
     <AppLayout>
@@ -47,7 +50,7 @@ function Overview() {
           <Sparkline data={volumeSeries.length > 1 ? volumeSeries : [10, 20, 35, 30, 48, 60]} height={90} />
           <div className="mt-6 space-y-2">
             <p className="text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Recent Activity</p>
-            {state.events.slice(0, 5).map((e) => (
+            {events.slice(0, 5).map((e) => (
               <div key={e.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/30 p-3 sm:px-4 sm:py-2.5">
                 <div className="min-w-0">
                   <p className="truncate text-xs sm:text-sm text-foreground">{e.detail}</p>
@@ -56,7 +59,7 @@ function Overview() {
                 <span className="shrink-0 text-[10px] text-muted-foreground">{new Date(e.at).toLocaleTimeString()}</span>
               </div>
             ))}
-            {state.events.length === 0 && <EmptyState title="No activity yet" hint="Create a transfer or launch an attack simulation." />}
+            {events.length === 0 && <EmptyState title="No activity yet" hint="Create a transfer or launch an attack simulation." />}
           </div>
         </GlassPanel>
 

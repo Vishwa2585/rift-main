@@ -1436,7 +1436,8 @@ export function reducer(state: RiftState, action: Action): RiftState {
       if (!tx) return state;
 
       // 1. Replay prevention check
-      if (state.consumedAuthNonces.includes(action.nonce)) {
+      const consumedNonces = Array.isArray(state.consumedAuthNonces) ? state.consumedAuthNonces : ["AUTH-55219"];
+      if (consumedNonces.includes(action.nonce)) {
         const auditEntry: AuditEntry = {
           id: `AUD-${String(++auditSeq).padStart(4, "0")}`,
           at: Date.now(),
@@ -1500,7 +1501,7 @@ export function reducer(state: RiftState, action: Action): RiftState {
       }
 
       // 4. Atomic single-use consumption & settlement
-      const updatedConsumed = [...state.consumedAuthNonces, action.nonce];
+      const updatedConsumed = [...consumedNonces, action.nonce];
       const updatedTransfers = state.transfers.map((t) =>
         t.id === action.txId
           ? {
@@ -1590,15 +1591,45 @@ const RiftContext = createContext<{ state: RiftState; dispatch: React.Dispatch<A
 
 export function RiftProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, () => {
-    if (typeof window === "undefined") return initialState();
+    const base = initialState();
+    if (typeof window === "undefined") return base;
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as RiftState;
-        if (parsed && Array.isArray(parsed.transfers) && Array.isArray(parsed.rules)) return parsed;
+        const parsed = JSON.parse(raw) as Partial<RiftState>;
+        if (parsed && typeof parsed === "object") {
+          return {
+            ...base,
+            ...parsed,
+            transfers: Array.isArray(parsed.transfers) ? parsed.transfers : base.transfers,
+            events: Array.isArray(parsed.events) ? parsed.events : base.events,
+            normalizedEvents: Array.isArray(parsed.normalizedEvents) ? parsed.normalizedEvents : base.normalizedEvents,
+            correlatedPairs: Array.isArray(parsed.correlatedPairs) ? parsed.correlatedPairs : base.correlatedPairs,
+            incidents: Array.isArray(parsed.incidents) ? parsed.incidents : base.incidents,
+            audit: Array.isArray(parsed.audit) ? parsed.audit : base.audit,
+            rules: Array.isArray(parsed.rules) && parsed.rules.length > 0 ? parsed.rules : base.rules,
+            consumedAuthNonces: Array.isArray(parsed.consumedAuthNonces)
+              ? parsed.consumedAuthNonces
+              : base.consumedAuthNonces,
+            receiverAccount: parsed.receiverAccount
+              ? {
+                  ...base.receiverAccount,
+                  ...parsed.receiverAccount,
+                  pendingInbound: Array.isArray(parsed.receiverAccount.pendingInbound)
+                    ? parsed.receiverAccount.pendingInbound
+                    : base.receiverAccount.pendingInbound,
+                }
+              : base.receiverAccount,
+            virtualNfcCard: parsed.virtualNfcCard
+              ? { ...base.virtualNfcCard, ...parsed.virtualNfcCard }
+              : base.virtualNfcCard,
+          };
+        }
       }
-    } catch { /* storage fallback */ }
-    return initialState();
+    } catch {
+      /* storage fallback */
+    }
+    return base;
   });
 
   // Background ticker for the active Demo Stream when scanning is active

@@ -22,8 +22,9 @@ export const Route = createFileRoute("/audit")({
 function Audit() {
   const { state } = useRift();
   const [actor, setActor] = useState("all");
-  const actors = ["all", ...Array.from(new Set(state.audit.map((a) => a.actor)))];
-  const rows = state.audit.filter((a) => actor === "all" || a.actor === actor);
+  const auditList = state?.audit || [];
+  const actors = ["all", ...Array.from(new Set(auditList.map((a) => a.actor)))];
+  const rows = auditList.filter((a) => actor === "all" || a.actor === actor);
   return (
     <AppLayout>
       <SectionTitle eyebrow="Compliance" title="Audit Ledger" right={<SimBadge />} />

@@ -15,10 +15,13 @@ dist-ssr
 .tanstack/**
 .nitro
 .vercel
+.wrangler
 *.local
 
-# Wrangler / Cloudflare
-.wrangler/
+# Environment & secrets
+.env
+.env.*
+!.env.example
 .dev.vars
 
 # Editor directories and files

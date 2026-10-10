@@ -25,11 +25,12 @@ function Transactions() {
   const [filter, setFilter] = useState<string>("all");
   const [selected, setSelected] = useState<string | null>(null);
 
+  const transfers = state.transfers || [];
   const filtered = useMemo(
-    () => state.transfers.filter((t) => filter === "all" || t.status === filter),
-    [state.transfers, filter],
+    () => transfers.filter((t) => filter === "all" || t.status === filter),
+    [transfers, filter],
   );
-  const tx = state.transfers.find((t) => t.id === selected) ?? null;
+  const tx = transfers.find((t) => t.id === selected) ?? null;
 
   return (
     <AppLayout>

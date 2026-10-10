@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { handleRiftApiRequest } from "../lib/rift/api-server";
+import {
+  handleRiftApiRequest,
+  REPLACEMENT_DEV_API_KEY,
+  REPLACEMENT_DEV_WEBHOOK_SECRET,
+} from "../lib/rift/api-server";
 import crypto from "crypto";
 
-const API_KEY = "rift_live_secret_2026";
-const WEBHOOK_SECRET = "rift_webhook_signing_secret_2026";
+const API_KEY = process.env["RIFT_API_KEY"] || REPLACEMENT_DEV_API_KEY;
+const WEBHOOK_SECRET = process.env["RIFT_WEBHOOK_SECRET"] || REPLACEMENT_DEV_WEBHOOK_SECRET;
 
 function createMockRequest(
   path: string,
@@ -34,7 +38,7 @@ describe("RIFT Bank Integration REST API & Security Test Suite", () => {
     expect(data.problemStatement).toBe("CSB-01");
   });
 
-  // 2. Authentication enforcement
+  // 2. Authentication enforcement & legacy credential rejection
   it("Rejects requests with missing or invalid API keys (401 Unauthorized)", async () => {
     const req = new Request("https://rift.local/api/v1/transactions/RFT-TX-0091", {
       method: "GET",
@@ -44,6 +48,15 @@ describe("RIFT Bank Integration REST API & Security Test Suite", () => {
     expect(res.status).toBe(401);
     const data = await res.json();
     expect(data.error).toBe("Unauthorized");
+  });
+
+  it("Rejects deprecated legacy default credential 'rift_live_secret_2026' (401 Unauthorized)", async () => {
+    const req = new Request("https://rift.local/api/v1/transactions/RFT-TX-0091", {
+      method: "GET",
+      headers: { "x-rift-api-key": "rift_live_secret_2026" },
+    });
+    const res = await handleRiftApiRequest(req);
+    expect(res.status).toBe(401);
   });
 
   // 3. Submit Transaction Intent (Normal Permitted)

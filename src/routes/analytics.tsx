@@ -22,13 +22,16 @@ export const Route = createFileRoute("/analytics")({
 
 function Analytics() {
   const { state } = useRift();
+  const incidents = state.incidents || [];
+  const events = state.events || [];
+  const rules = state.rules || [];
   const bands = { LOW: 0, ELEVATED: 0, HIGH: 0, CRITICAL: 0 } as Record<string, number>;
-  state.incidents.forEach((i) => { const b = riskBand(i.score).label; bands[b] = (bands[b] ?? 0) + 1; });
+  incidents.forEach((i) => { const b = riskBand(i.score).label; bands[b] = (bands[b] ?? 0) + 1; });
   const byChain: Record<string, number> = {};
-  state.events.forEach((e) => { byChain[e.chain] = (byChain[e.chain] ?? 0) + 1; });
+  events.forEach((e) => { byChain[e.chain] = (byChain[e.chain] ?? 0) + 1; });
   const ruleHits: Record<string, number> = {};
-  state.incidents.forEach((i) => i.contributions.forEach((c) => { if (c.applied) ruleHits[c.ruleId] = (ruleHits[c.ruleId] ?? 0) + 1; }));
-  const totalIncidents = state.incidents.length || 1;
+  incidents.forEach((i) => (i.contributions || []).forEach((c) => { if (c.applied) ruleHits[c.ruleId] = (ruleHits[c.ruleId] ?? 0) + 1; }));
+  const totalIncidents = incidents.length || 1;
 
   return (
     <AppLayout>
@@ -49,14 +52,14 @@ function Analytics() {
         </GlassPanel>
         <GlassPanel className="p-4 sm:p-6">
           <h3 className="mb-6 font-display text-lg font-semibold">Rule activations</h3>
-          <Bars data={state.rules.map((r) => ({ label: r.id, value: ruleHits[r.id] ?? 0, tone: r.enabled ? "gold" : "muted" }))} />
+          <Bars data={rules.map((r) => ({ label: r.id, value: ruleHits[r.id] ?? 0, tone: r.enabled ? "gold" : "muted" }))} />
         </GlassPanel>
         <GlassPanel className="p-4 sm:p-6">
           <h3 className="mb-6 font-display text-lg font-semibold">Aggregate allocation</h3>
           <Donut slices={["Equities", "Real Assets", "Digital Assets", "Cash & Bonds"].map((label) => ({
             label, pct: Math.round(CLIENTS.reduce((s, c) => s + (c.allocation.find((a) => a.label === label)?.pct ?? 0), 0) / CLIENTS.length),
           }))} />
-          <div className="mt-6"><Sparkline data={state.incidents.map((i) => i.score).reverse().concat([0]).slice(-12)} /></div>
+          <div className="mt-6"><Sparkline data={incidents.map((i) => i.score).reverse().concat([0]).slice(-12)} /></div>
           <p className="mt-1 text-[10px] text-muted-foreground">Risk score per incident over time</p>
         </GlassPanel>
       </div>

@@ -81,16 +81,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { state, dispatch } = useRift();
-  const openIncidents = state.incidents.filter((i) => i.status === "open").length;
+  const incidents = state?.incidents || [];
+  const transfers = state?.transfers || [];
+  const openIncidents = incidents.filter((i) => i && i.status === "open").length;
   const [showApprovalModal, setShowApprovalModal] = useState(false);
-  const pendingApprovalTx = state.transfers.find(
+  const pendingApprovalTx = transfers.find(
     (t) =>
+      t &&
       t.twoPartyApproval &&
       t.state === "PENDING_PARTY_APPROVAL" &&
       (t.twoPartyApproval.senderDecision === "PENDING" || t.twoPartyApproval.receiverDecision === "PENDING")
   );
-  const activeApprovalTx = state.activeApprovalTxId
-    ? state.transfers.find((t) => t.id === state.activeApprovalTxId)
+  const activeApprovalTx = state?.activeApprovalTxId
+    ? transfers.find((t) => t && t.id === state.activeApprovalTxId)
     : pendingApprovalTx;
 
   return (

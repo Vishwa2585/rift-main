@@ -973,13 +973,13 @@ function Bank() {
               </span>
             </div>
 
-            {state.receiverAccount.pendingInbound.length === 0 ? (
+            {(state.receiverAccount?.pendingInbound || []).length === 0 ? (
               <GlassPanel className="p-8 text-center text-muted-foreground text-sm">
                 No inbound transfers pending. Go to the Sender Portal to create a transfer to this receiver.
               </GlassPanel>
             ) : (
               <div className="space-y-3">
-                {state.receiverAccount.pendingInbound.map((inbound) => {
+                {(state.receiverAccount?.pendingInbound || []).map((inbound) => {
                   const matchingTx = state.transfers.find((t) => t.id === inbound.txId);
                   const isAwaitingApproval = matchingTx?.state === "PENDING_PARTY_APPROVAL";
                   const isRejected = matchingTx?.state === "REJECTED";

@@ -14,7 +14,11 @@
  */
 
 import type { ApiTransaction } from "./api-server";
-import { handleRiftApiRequest } from "./api-server";
+import {
+  handleRiftApiRequest,
+  REPLACEMENT_DEV_API_KEY,
+  REPLACEMENT_DEV_WEBHOOK_SECRET,
+} from "./api-server";
 
 export interface RiftBankClientConfig {
   baseUrl?: string;
@@ -35,6 +39,7 @@ export interface CreateIntentParams {
   destChain: string;
   recipientType?: "REGISTERED" | "UNREGISTERED_WALLET" | "PENDING_CLAIM";
   requiresNfc?: boolean;
+  approvalDeadlineMs?: number;
   idempotencyKey?: string;
 }
 
@@ -79,28 +84,39 @@ export class RiftBankClient {
   private apiKey: string;
   private webhookSecret: string;
   private directHandler: typeof handleRiftApiRequest | null;
+  private isBrowserClient: boolean;
 
   constructor(config: RiftBankClientConfig = {}) {
-    // Resolve base URL
+    const isBrowser = typeof window !== "undefined" && Boolean(window.location);
+    this.isBrowserClient = isBrowser && !config.apiKey && !config.directHandler;
+
     if (config.baseUrl) {
       this.baseUrl = config.baseUrl.replace(/\/+$/, "");
-    } else if (typeof window !== "undefined" && window.location) {
-      this.baseUrl = `${window.location.origin}/api/v1`;
+    } else if (this.isBrowserClient) {
+      // Browser client routes through the Bank's secure server-side adapter.
+      // Privileged API keys are never exposed in browser requests or bundles.
+      this.baseUrl = "/api/bank";
+    } else if (typeof process !== "undefined" && process.env && process.env["RIFT_CORE_URL"]) {
+      this.baseUrl = process.env["RIFT_CORE_URL"].replace(/\/+$/, "");
     } else {
       this.baseUrl = "http://localhost:3000/api/v1";
     }
 
-    // Resolve API key
-    this.apiKey =
-      config.apiKey ||
-      (typeof process !== "undefined" && process.env ? process.env["RIFT_API_KEY"] : null) ||
-      "rift_live_secret_2026";
+    // Resolve API key: In browser client mode, never bundle or transmit privileged secrets
+    if (this.isBrowserClient) {
+      this.apiKey = "";
+      this.webhookSecret = "";
+    } else {
+      this.apiKey =
+        config.apiKey ||
+        (typeof process !== "undefined" && process.env ? process.env["RIFT_API_KEY"] : null) ||
+        REPLACEMENT_DEV_API_KEY;
 
-    // Resolve Webhook Secret
-    this.webhookSecret =
-      config.webhookSecret ||
-      (typeof process !== "undefined" && process.env ? process.env["RIFT_WEBHOOK_SECRET"] : null) ||
-      "rift_webhook_signing_secret_2026";
+      this.webhookSecret =
+        config.webhookSecret ||
+        (typeof process !== "undefined" && process.env ? process.env["RIFT_WEBHOOK_SECRET"] : null) ||
+        REPLACEMENT_DEV_WEBHOOK_SECRET;
+    }
 
     this.directHandler = config.directHandler ?? null;
   }
@@ -118,7 +134,13 @@ export class RiftBankClient {
     const fullUrl = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
     const requestHeaders = new Headers();
-    Object.entries(headers).forEach(([k, v]) => requestHeaders.set(k, v));
+    Object.entries(headers).forEach(([k, v]) => {
+      // Never transmit privileged secret headers in browser client mode
+      if (this.isBrowserClient && (k.toLowerCase() === "x-rift-api-key" || k.toLowerCase() === "x-rift-signature")) {
+        return;
+      }
+      if (v) requestHeaders.set(k, v);
+    });
 
     const reqInit: RequestInit = {
       method,
@@ -243,6 +265,7 @@ export class RiftBankClient {
       destChain: params.destChain,
       recipientType: params.recipientType || "REGISTERED",
       requiresNfc: params.requiresNfc ?? false,
+      approvalDeadlineMs: params.approvalDeadlineMs,
     });
 
     const res = await this.dispatchRequest("/transactions/intent", "POST", {
@@ -397,6 +420,22 @@ export class RiftBankClient {
     }
 
     return res.data;
+  }
+
+  /**
+   * Retrieve Incident Record by ID from RIFT Core
+   */
+  async getIncident(incidentId: string): Promise<any> {
+    const res = await this.dispatchRequest(`/incidents/${encodeURIComponent(incidentId)}`, "GET", {
+      Accept: "application/json",
+      "x-rift-api-key": this.apiKey,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Get incident failed for ${incidentId} with HTTP ${res.status}: ${JSON.stringify(res.data)}`);
+    }
+
+    return res.data.incident || res.data;
   }
 }
 
