@@ -930,3 +930,212 @@ export function evaluateTransferPreflight(
   return { allPassed, checks };
 }
 
+// ==============================================================================
+// CSB-01 Cross-Chain Bridge Anomaly Detection Engine (Chainalysis Specification)
+// ==============================================================================
+
+export interface Csb01Input {
+  amount: number;
+  amountBaseUnits?: number;
+  volume24hBaseUnits?: number;
+  recentTxCount1h?: number;
+  isCrossChain?: boolean;
+  sourceChainId?: string;
+  destChainId?: string;
+  bridgeProtocol?: string;
+  senderUserId?: string;
+  senderTrustScore?: number;
+  senderIsNewProfile?: boolean;
+  requiresNfc?: boolean;
+  nfcVerified?: boolean;
+}
+
+export interface Csb01RuleViolation {
+  ruleId:
+    | "POL_VOLUME_SPIKE"
+    | "POL_RAPID_LIQUIDITY_DRAIN"
+    | "POL_UNUSUAL_SIGNER_BEHAVIOR"
+    | "POL_MISMATCHED_BRIDGE_LEG"
+    | "POL_HIGH_VALUE_MFA";
+  ruleName: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM";
+  weight: number;
+  reason: string;
+  evidence: Record<string, unknown>;
+}
+
+export interface Csb01EvaluationResult {
+  passed: boolean;
+  status: "APPROVED" | "REJECTED" | "AWAITING_AUTHORIZATION";
+  riskScore: number;
+  violations: Csb01RuleViolation[];
+  reasons: string[];
+  requiresNfc: boolean;
+  recommendation: "ALLOW" | "HALT_SETTLEMENT_AND_ALERT_PARTIES" | "REQUIRE_MFA_HARDWARE";
+}
+
+export const SUPPORTED_BRIDGE_CHAINS = [
+  "ethereum",
+  "arbitrum",
+  "optimism",
+  "polygon",
+  "solana",
+  "base",
+  "avalanche",
+  "bsc",
+];
+
+export function evaluateCsb01Heuristics(params: Csb01Input): Csb01EvaluationResult {
+  const violations: Csb01RuleViolation[] = [];
+  const currentBaseUnits = params.amountBaseUnits || Math.round(params.amount * 100);
+
+  // 1. POL_VOLUME_SPIKE: Sudden surge in transfer amount (>3x average 24h volume)
+  if (params.volume24hBaseUnits && params.volume24hBaseUnits > 0) {
+    const ratio = currentBaseUnits / params.volume24hBaseUnits;
+    if (ratio > 3.0 && (params.amount >= 1000 || currentBaseUnits >= 100_000)) {
+      violations.push({
+        ruleId: "POL_VOLUME_SPIKE",
+        ruleName: "POL_VOLUME_SPIKE: Sudden Surge in Transfer Amount (>3x 24h Volume)",
+        severity: "CRITICAL",
+        weight: 0.45,
+        reason: `Transfer volume ($${params.amount.toLocaleString()}) surges ${ratio.toFixed(1)}x above 24h historical baseline (threshold: 3.0x).`,
+        evidence: {
+          transfer_amount: params.amount,
+          transfer_amount_base_units: currentBaseUnits,
+          volume_24h_base_units: params.volume24hBaseUnits,
+          surge_multiplier: Number(ratio.toFixed(2)),
+          threshold_multiplier: 3.0,
+          exploit_type: "LIQUIDITY_SPIKE",
+        },
+      });
+    }
+  }
+
+  // 2. POL_RAPID_LIQUIDITY_DRAIN: High transaction frequency in short window (recent_tx_count_1h > 5 with large amounts)
+  if ((params.recentTxCount1h || 0) > 5 && (params.amount >= 20_000 || currentBaseUnits >= 2_000_000)) {
+    violations.push({
+      ruleId: "POL_RAPID_LIQUIDITY_DRAIN",
+      ruleName: "POL_RAPID_LIQUIDITY_DRAIN: High Velocity Drain in 1-Hour Window",
+      severity: "CRITICAL",
+      weight: 0.50,
+      reason: `Velocity anomaly: ${params.recentTxCount1h} transactions in 1 hour combined with large withdrawal ($${params.amount.toLocaleString()}).`,
+      evidence: {
+        recent_tx_count_1h: params.recentTxCount1h,
+        frequency_threshold: 5,
+        transfer_amount: params.amount,
+        exploit_type: "LIQUIDITY_DRAIN",
+      },
+    });
+  }
+
+  // 3. POL_UNUSUAL_SIGNER_BEHAVIOR: Sender account has low trust score (<400) or new profile executing cross-chain bridge transfer
+  if (params.senderTrustScore !== undefined && params.senderTrustScore < 400) {
+    violations.push({
+      ruleId: "POL_UNUSUAL_SIGNER_BEHAVIOR",
+      ruleName: "POL_UNUSUAL_SIGNER_BEHAVIOR: Signer Trust Score Below Safe Threshold (<400)",
+      severity: "CRITICAL",
+      weight: 0.45,
+      reason: `Degraded signer reputation: sender trust score is ${params.senderTrustScore} (safe threshold is >= 400).`,
+      evidence: {
+        sender_trust_score: params.senderTrustScore,
+        safe_threshold: 400,
+        exploit_type: "COMPROMISED_KEY",
+      },
+    });
+  } else if (params.senderIsNewProfile && params.isCrossChain) {
+    violations.push({
+      ruleId: "POL_UNUSUAL_SIGNER_BEHAVIOR",
+      ruleName: "POL_UNUSUAL_SIGNER_BEHAVIOR: Unverified Profile Immediate Bridge Transfer",
+      severity: "HIGH",
+      weight: 0.40,
+      reason: "New provisional profile initiating high-value cross-chain bridge settlement without historical provenance.",
+      evidence: {
+        is_new_profile: true,
+        is_cross_chain: true,
+        exploit_type: "UNVERIFIED_SIGNER",
+      },
+    });
+  }
+
+  // 4. POL_MISMATCHED_BRIDGE_LEG: Cross-chain deposit where source and destination chain IDs are incompatible or unmapped
+  if (params.isCrossChain) {
+    const src = (params.sourceChainId || "ethereum").trim().toLowerCase();
+    const dst = (params.destChainId || "").trim().toLowerCase();
+    const isUnmapped = !dst || dst === "unknown" || dst === "unmapped" || !SUPPORTED_BRIDGE_CHAINS.includes(dst);
+    const isIdentical = src === dst;
+
+    if (isUnmapped || isIdentical) {
+      violations.push({
+        ruleId: "POL_MISMATCHED_BRIDGE_LEG",
+        ruleName: "POL_MISMATCHED_BRIDGE_LEG: Incompatible or Unmapped Cross-Chain Bridge Route",
+        severity: "CRITICAL",
+        weight: 0.60,
+        reason: isIdentical
+          ? `Invalid bridge leg: source chain '${src}' is identical to destination chain '${dst}' for cross-chain operation.`
+          : `Destination bridge route '${params.destChainId || "UNKNOWN"}' is incompatible or unmapped in canonical registry.`,
+        evidence: {
+          source_chain_id: params.sourceChainId,
+          destination_chain_id: params.destChainId,
+          bridge_protocol: params.bridgeProtocol || "NATIVE_BRIDGE",
+          exploit_type: "FORGED_DEPOSIT_OR_ROUTING_MISMATCH",
+        },
+      });
+    }
+  }
+
+  // 5. POL_HIGH_VALUE_MFA: Transfers exceeding threshold require RIFT KEY MFA (status: AWAITING_AUTHORIZATION)
+  const isHighValue =
+    (params.amountBaseUnits !== undefined && params.amountBaseUnits >= 25_000_000) ||
+    (params.amount >= 250_000 && params.amount < 1_000_000) ||
+    params.amount >= 100_000_000;
+
+  if (params.requiresNfc !== false && (isHighValue || params.requiresNfc === true) && !params.nfcVerified) {
+    violations.push({
+      ruleId: "POL_HIGH_VALUE_MFA",
+      ruleName: "POL_HIGH_VALUE_MFA: Transfers Exceeding Threshold Require RIFT KEY MFA",
+      severity: "MEDIUM",
+      weight: 0.20,
+      reason: `Transfer amount ($${params.amount.toLocaleString()}) exceeds high-value threshold; physical RIFT KEY MFA authorization required.`,
+      evidence: {
+        transfer_amount: params.amount,
+        threshold: 250000,
+        requires_nfc: true,
+        nfc_verified: false,
+      },
+    });
+  }
+
+  // Aggregate risk score
+  const totalWeight = violations.reduce((sum, v) => sum + v.weight, 0);
+  const criticalViolations = violations.filter((v) => v.severity === "CRITICAL" || v.severity === "HIGH");
+
+  let status: "APPROVED" | "REJECTED" | "AWAITING_AUTHORIZATION" = "APPROVED";
+  let recommendation: "ALLOW" | "HALT_SETTLEMENT_AND_ALERT_PARTIES" | "REQUIRE_MFA_HARDWARE" = "ALLOW";
+  let riskScore = Math.min(1.0, totalWeight);
+
+  if (totalWeight >= 0.75 || criticalViolations.length > 0) {
+    riskScore = Math.max(0.75, Math.min(1.0, totalWeight));
+    status = "REJECTED";
+    recommendation = "HALT_SETTLEMENT_AND_ALERT_PARTIES";
+  } else if (violations.some((v) => v.ruleId === "POL_HIGH_VALUE_MFA")) {
+    riskScore = Math.max(0.30, totalWeight);
+    status = "AWAITING_AUTHORIZATION";
+    recommendation = "REQUIRE_MFA_HARDWARE";
+  } else {
+    riskScore = 0.05;
+    status = "APPROVED";
+    recommendation = "ALLOW";
+  }
+
+  return {
+    passed: status !== "REJECTED",
+    status,
+    riskScore: Number(riskScore.toFixed(2)),
+    violations,
+    reasons: violations.map((v) => `${v.ruleId}: ${v.reason}`),
+    requiresNfc: violations.some((v) => v.ruleId === "POL_HIGH_VALUE_MFA") || Boolean(params.requiresNfc),
+    recommendation,
+  };
+}
+
+

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useRift } from "@/lib/rift/store";
 import { TwoPartyAlertModal } from "./TwoPartyAlertModal";
+import { AuthBar } from "./AuthBar";
 import { SimBadge } from "./ui";
 import {
   LayoutDashboard, Landmark, ArrowLeftRight, Radar, ShieldAlert, History,
@@ -202,6 +203,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <span>{openIncidents}</span>
             </Link>
           )}
+          <AuthBar />
           <ThemeToggle />
         </div>
       </header>
@@ -239,6 +241,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       <main className="lg:pl-64 pb-24 lg:pb-8 w-full max-w-full overflow-x-hidden min-w-0">
         <div className="mx-auto max-w-6xl w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-8 min-w-0">
+          {/* Desktop Identity & Real-Time Supabase Channel Bar */}
+          <div className="hidden lg:flex mb-6 items-center justify-between gap-4 border-b border-border pb-4">
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+                RIFT Engine · Shared Identity & Supabase Real-Time Bridge
+              </span>
+            </div>
+            <AuthBar />
+          </div>
           {/* Active Two-Party Approval Banner */}
           {pendingApprovalTx && pendingApprovalTx.twoPartyApproval && (
             <div className="mb-6 rounded-2xl border border-warning/70 bg-warning/15 p-4 shadow-lg shadow-warning/10 backdrop-blur-md animate-in fade-in">

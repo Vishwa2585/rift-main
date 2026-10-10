@@ -12,6 +12,7 @@ import { type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { RiftProvider } from "../lib/rift/store";
+import { AuthProvider } from "../lib/rift/auth-context";
 
 function NotFoundComponent() {
   return (
@@ -125,9 +126,11 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <RiftProvider>
-        <Outlet />
-      </RiftProvider>
+      <AuthProvider>
+        <RiftProvider>
+          <Outlet />
+        </RiftProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

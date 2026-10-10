@@ -2,6 +2,8 @@ import {
   computeTransactionDigest,
   verifyTransactionDigest,
   evaluateTransferPreflight,
+  evaluateCsb01Heuristics,
+  type Csb01Input,
   DEFAULT_RULES,
   makeNormalizedEvent,
   evaluateCorrelatedPair,
@@ -10,6 +12,12 @@ import {
 } from "./engine";
 import { simHash } from "./data";
 import { riftStorage, RIFT_SUPABASE_SCHEMA_SQL } from "./storage";
+import {
+  getUserTrustProfile,
+  insertTwoPartySecurityAlerts,
+  fetchRecentSecurityFindings,
+  fetchRecentLedgerTransactions,
+} from "./supabase";
 import crypto from "crypto";
 
 export interface ApiTransaction {
@@ -226,6 +234,65 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       storage: riftStorage.getStatus(),
       activeRules: DEFAULT_RULES.length,
       timestamp: Date.now(),
+    });
+  }
+
+  // Live Security Findings from Supabase: GET /api/v1/rift/security-findings
+  if (path === "/api/v1/rift/security-findings" && request.method === "GET") {
+    const findings = await fetchRecentSecurityFindings(50);
+    return jsonResponse({
+      success: true,
+      count: findings.length,
+      findings,
+    });
+  }
+
+  // Live Ledger Transactions from Supabase: GET /api/v1/rift/ledger-transactions
+  if (path === "/api/v1/rift/ledger-transactions" && request.method === "GET") {
+    const transactions = await fetchRecentLedgerTransactions(30);
+    return jsonResponse({
+      success: true,
+      count: transactions.length,
+      transactions,
+    });
+  }
+
+  // Simulate CSB-01 Exploit Scenario & Trigger Two-Party Alerts: POST /api/v1/rift/security-findings/simulate
+  if (path === "/api/v1/rift/security-findings/simulate" && request.method === "POST") {
+    let simBody: any = {};
+    try {
+      simBody = await request.json();
+    } catch {
+      simBody = {};
+    }
+    const ruleId = simBody.ruleId || "POL_VOLUME_SPIKE";
+    const ruleName = simBody.ruleName || "POL_VOLUME_SPIKE: Sudden Surge in Transfer Amount (>3x 24h Volume)";
+    const senderUserId = simBody.senderUserId || "1ca32bb1-839a-4d04-9e06-1ed9cc5432c8";
+    const receiverUserId = simBody.receiverUserId || "cf1c80fb-1a06-4a9f-9a03-e76f44c92878";
+    const amount = simBody.amount || 500_000;
+
+    const alertRes = await insertTwoPartySecurityAlerts({
+      riftTransactionId: `RFT-SIM-${Date.now().toString().slice(-4)}`,
+      ruleId,
+      ruleName,
+      senderUserId,
+      receiverUserId,
+      evidence: {
+        simulation: true,
+        scenario: "CSB_01_SIMULATED_ATTACK",
+        surge_multiplier: 5.4,
+        amount,
+        timestamp: Date.now(),
+      },
+    });
+
+    return jsonResponse({
+      success: true,
+      simulated: true,
+      ruleId,
+      ruleName,
+      senderAlert: alertRes.senderFinding,
+      receiverAlert: alertRes.receiverFinding,
     });
   }
 
@@ -523,7 +590,73 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       claimToken = `CLM-${Math.floor(100000 + Math.random() * 900000)}`;
     }
 
-    // Run real deterministic detection engine preflight check
+    // Extract contextual parameters sent by RIFT Bank
+    const senderUserId = body.sender_user_id || body.senderUserId || null;
+    const senderEmail = body.sender_email || body.senderEmail || null;
+    const receiverUserId = body.receiver_user_id || body.receiverUserId || null;
+    const receiverEmail = body.receiver_email || body.receiverEmail || null;
+    const senderWalletId = body.sender_wallet_id || body.senderWalletId || null;
+    const receiverWalletId = body.receiver_wallet_id || body.receiverWalletId || null;
+    const recentTxCount1h =
+      typeof body.recent_tx_count_1h === "number"
+        ? body.recent_tx_count_1h
+        : typeof body.recentTxCount1h === "number"
+          ? body.recentTxCount1h
+          : undefined;
+    const volume24hBaseUnits =
+      typeof body.volume_24h_base_units === "number"
+        ? body.volume_24h_base_units
+        : typeof body.volume24hBaseUnits === "number"
+          ? body.volume24hBaseUnits
+          : undefined;
+    const isCrossChain =
+      typeof body.is_cross_chain === "boolean"
+        ? body.is_cross_chain
+        : typeof body.isCrossChain === "boolean"
+          ? body.isCrossChain
+          : sourceChain.toLowerCase() !== destChain.toLowerCase();
+    const destChainId = body.destination_chain_id || body.destChainId || destChain;
+    const sourceChainId = body.source_chain_id || body.sourceChainId || sourceChain;
+    const bridgeProtocol = body.bridge_protocol || body.bridgeProtocol || undefined;
+
+    // Query Supabase trust_profiles for sender reputation
+    let senderTrustScore: number | undefined = undefined;
+    let senderIsNewProfile: boolean | undefined = undefined;
+    if (senderUserId) {
+      try {
+        const trustProfile = await getUserTrustProfile(senderUserId);
+        if (trustProfile) {
+          senderTrustScore = trustProfile.current_score;
+          senderIsNewProfile = trustProfile.is_new_profile;
+        }
+      } catch {
+        // Fallback gracefully
+      }
+    }
+
+    // 1. Evaluate CSB-01 Cross-Chain Bridge Anomaly Heuristics
+    const amountBaseUnits =
+      typeof body.amount_base_units === "number"
+        ? body.amount_base_units
+        : Math.round(amount * 100);
+
+    const csb01 = evaluateCsb01Heuristics({
+      amount,
+      amountBaseUnits,
+      volume24hBaseUnits,
+      recentTxCount1h,
+      isCrossChain,
+      sourceChainId,
+      destChainId,
+      bridgeProtocol,
+      senderUserId: senderUserId || undefined,
+      senderTrustScore,
+      senderIsNewProfile,
+      requiresNfc: body.requiresNfc ?? body.requires_nfc ?? false,
+      nfcVerified: body.nfcVerified ?? false,
+    });
+
+    // 2. Evaluate Core Invariant Preflight Rules
     const preflight = evaluateTransferPreflight(
       {
         amount,
@@ -535,9 +668,13 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       DEFAULT_RULES,
     );
 
-    const isFlaggedAnomaly = !preflight.allPassed || recipientAddress.toLowerCase().includes("7f39");
+    const isFlaggedAnomaly =
+      !preflight.allPassed ||
+      recipientAddress.toLowerCase().includes("7f39") ||
+      csb01.status === "REJECTED";
     const isHighValue = amount >= 20_000_000;
-    const requiresNfc = body.requiresNfc ?? true;
+    const requiresNfc =
+      body.requiresNfc === false ? false : csb01.requiresNfc || Boolean(body.requiresNfc);
 
     // State machine calculation
     let initialState: ApiTransaction["state"] = "CREATED";
@@ -547,7 +684,10 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
     const deadlineMs =
       typeof body.approvalDeadlineMs === "number" ? body.approvalDeadlineMs : 1000 * 60;
 
-    if (isFlaggedAnomaly || isHighValue) {
+    if (csb01.status === "REJECTED") {
+      initialState = "REJECTED";
+      initialStatus = "rejected";
+    } else if (isFlaggedAnomaly || isHighValue) {
       initialState = "PENDING_PARTY_APPROVAL";
       initialStatus = "flagged";
       twoPartyApproval = {
@@ -555,9 +695,10 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
         senderDecision: "PENDING",
         receiverDecision: "PENDING",
         deadlineTimestamp: Date.now() + deadlineMs,
-        reason: isFlaggedAnomaly
-          ? "Preflight security invariant failed: " + preflight.checks.find((c) => !c.passed)?.name
-          : "High-value transaction threshold policy mandates dual consent.",
+        reason: !preflight.allPassed
+          ? "Preflight security invariant failed: " +
+            preflight.checks.find((c) => !c.passed)?.name
+          : csb01.reasons[0] || "High-value transaction threshold policy mandates dual consent.",
         settlementHeld: true,
       };
     } else if (requiresNfc) {
@@ -582,6 +723,15 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       expiresAt,
     });
 
+    const calculatedRiskScore =
+      csb01.status === "REJECTED"
+        ? Math.round(csb01.riskScore * 100)
+        : isFlaggedAnomaly
+          ? 65
+          : isHighValue
+            ? 30
+            : Math.round(csb01.riskScore * 100);
+
     const newTx: ApiTransaction = {
       id: txId,
       bankOperationId,
@@ -599,7 +749,7 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       status: initialStatus,
       requiresNfc,
       nfcVerified: false,
-      riskScore: isFlaggedAnomaly ? 65 : isHighValue ? 30 : 0,
+      riskScore: calculatedRiskScore,
       twoPartyApproval,
       keyChallenge: {
         nonce,
@@ -611,7 +761,12 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       sourceBlockNumber: 21_044_200,
       confirmations: initialState === "SETTLED" ? 32 : 1,
       requiredConfirmations: 32,
-      receiptStatus: initialState === "SETTLED" ? "SUCCESS" : "PENDING",
+      receiptStatus:
+        initialState === "SETTLED"
+          ? "SUCCESS"
+          : initialState === "REJECTED"
+            ? "REVERTED"
+            : "PENDING",
       isSimulated: true,
       blockchainProvenance: "CONTROLLED_SIMULATION",
       createdAt: Date.now(),
@@ -621,23 +776,76 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
     // Persist transaction across separate server instances
     await riftStorage.saveTransaction(newTx);
 
+    // OBJECTIVE 5: Two-Party Alerting in Supabase
+    let senderAlertInserted = false;
+    let receiverAlertInserted = false;
+    if (csb01.status === "REJECTED" || csb01.riskScore >= 0.75) {
+      const primaryViolation = csb01.violations[0];
+      const alertResult = await insertTwoPartySecurityAlerts({
+        riftTransactionId: txId,
+        ruleId: primaryViolation?.ruleId || "POL_VOLUME_SPIKE",
+        ruleName: primaryViolation?.ruleName || "CSB-01 Bridge Anomaly Exploit Intercepted",
+        senderUserId,
+        receiverUserId,
+        senderWalletId,
+        receiverWalletId,
+        evidence: {
+          exploit_type: primaryViolation?.ruleId || "EXPLOIT_PATTERN",
+          reasons: csb01.reasons,
+          violations: csb01.violations,
+          amount,
+          amount_base_units: amountBaseUnits,
+          asset,
+          source_chain: sourceChainId,
+          destination_chain: destChainId,
+          volume_spike_ratio: primaryViolation?.evidence?.["surge_multiplier"],
+          recent_tx_count_1h: recentTxCount1h,
+          volume_24h_base_units: volume24hBaseUnits,
+          bank_operation_id: bankOperationId,
+          timestamp: Date.now(),
+        },
+      });
+      senderAlertInserted = Boolean(alertResult.senderFinding);
+      receiverAlertInserted = Boolean(alertResult.receiverFinding);
+    }
+
     let incidentRecord: IncidentRecord | undefined = undefined;
-    if (isFlaggedAnomaly) {
-      const failedCheck = preflight.checks.find((c) => !c.passed);
+    const failedPreflightCheck = preflight.checks.find((c) => !c.passed);
+    const criticalCsb01Violation = csb01.violations.find((v) => v.severity === "CRITICAL" || v.severity === "HIGH");
+
+    if (failedPreflightCheck) {
       const incId = `INC-${Date.now().toString().slice(-4)}`;
       incidentRecord = {
         id: incId,
         txId,
-        title: `Security Invariant Alert: ${failedCheck?.name || "Suspicious Transfer Invariant"}`,
-        ruleId: failedCheck?.ruleId || "R-03",
+        title: `Security Invariant Alert: ${failedPreflightCheck.name}`,
+        ruleId: failedPreflightCheck.ruleId,
         severity: "critical",
         status: "open",
         evidence: {
-          expectedValue: failedCheck?.expected || "Approved Institutional Beneficiary",
-          observedValue: failedCheck?.observed || recipientAddress,
-          detail: failedCheck?.detail || "Preflight security invariant failed",
+          expectedValue: failedPreflightCheck.expected || "Authorized Institutional Beneficiary",
+          observedValue: failedPreflightCheck.observed || recipientAddress,
+          detail: failedPreflightCheck.detail || "Preflight security invariant failed",
         },
-        riskScore: 65,
+        riskScore: calculatedRiskScore,
+        createdAt: Date.now(),
+      };
+      await riftStorage.saveIncident(incidentRecord);
+    } else if (csb01.status === "REJECTED" && criticalCsb01Violation) {
+      const incId = `INC-CSB-${Date.now().toString().slice(-4)}`;
+      incidentRecord = {
+        id: incId,
+        txId,
+        title: `CSB-01 Bridge Exploit: ${criticalCsb01Violation.ruleName}`,
+        ruleId: criticalCsb01Violation.ruleId,
+        severity: "critical",
+        status: "open",
+        evidence: {
+          expectedValue: "Authoritative Cross-Chain Settlement Policy",
+          observedValue: criticalCsb01Violation.reason,
+          detail: csb01.reasons.join(" | "),
+        },
+        riskScore: calculatedRiskScore,
         createdAt: Date.now(),
       };
       await riftStorage.saveIncident(incidentRecord);
@@ -645,18 +853,20 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
 
     // Build comprehensive response matching both RIFT Core and RIFT Bank adapter contracts
     const responsePayload = {
-      success: true,
+      success: csb01.status !== "REJECTED",
       transaction: newTx,
       riftTxId: newTx.id,
       bankOperationId: newTx.bankOperationId,
       state: newTx.state,
-      status: newTx.status,
+      status: csb01.status === "REJECTED" ? "REJECTED" : newTx.status,
       recipientType: newTx.recipientType,
       counterpartyId: newTx.counterpartyId,
       claimToken: newTx.claimToken,
       riskScore: newTx.riskScore,
       preflightPassed: preflight.allPassed,
       preflightChecks: preflight.checks,
+      csb01Passed: csb01.passed,
+      csb01Violations: csb01.violations,
       requiresTwoPartyConsent: !!newTx.twoPartyApproval,
       twoPartyApproval: newTx.twoPartyApproval,
       requiresNfc: newTx.requiresNfc,
@@ -678,20 +888,40 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       rift_operation_id: newTx.id,
       transfer_id: newTx.bankOperationId,
       risk_assessment: {
-        score: newTx.riskScore,
-        level: newTx.riskScore >= 60 ? "CRITICAL" : newTx.riskScore >= 30 ? "HIGH" : "LOW",
-        recommendation: newTx.twoPartyApproval
-          ? "REQUIRE_TWO_PARTY_APPROVAL"
-          : newTx.requiresNfc
-            ? "REQUIRE_MFA_HARDWARE"
-            : "ALLOW",
-        reasons: newTx.twoPartyApproval ? [newTx.twoPartyApproval.reason] : [],
+        score: csb01.riskScore,
+        level:
+          csb01.status === "REJECTED" || newTx.riskScore >= 60
+            ? "CRITICAL"
+            : newTx.riskScore >= 30
+              ? "HIGH"
+              : "LOW",
+        recommendation:
+          csb01.status === "REJECTED"
+            ? "HALT_SETTLEMENT_AND_ALERT_PARTIES"
+            : newTx.twoPartyApproval
+              ? "REQUIRE_TWO_PARTY_APPROVAL"
+              : newTx.requiresNfc
+                ? "REQUIRE_MFA_HARDWARE"
+                : "ALLOW",
+        reasons:
+          csb01.reasons.length > 0
+            ? csb01.reasons
+            : newTx.twoPartyApproval
+              ? [newTx.twoPartyApproval.reason]
+              : [],
+        rules_triggered: csb01.violations.map((v) => v.ruleId),
+        sender_alerted: senderAlertInserted || Boolean(senderUserId),
+        receiver_alerted: receiverAlertInserted || Boolean(receiverUserId),
       },
       authorization_requirements: {
         requires_rift_key: newTx.requiresNfc,
         requires_two_party: !!newTx.twoPartyApproval,
         challenge_nonce: newTx.keyChallenge?.nonce,
         deadline_timestamp: newTx.twoPartyApproval?.deadlineTimestamp,
+      },
+      two_party_alerts: {
+        sender_finding_recorded: senderAlertInserted,
+        receiver_finding_recorded: receiverAlertInserted,
       },
       blockchain_evidence: {
         source_hash: newTx.sourceHash,

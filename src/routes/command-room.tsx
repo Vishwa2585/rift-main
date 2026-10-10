@@ -35,9 +35,27 @@ function CommandRoom() {
     dispatch({ type: "SET_SCANNING_STATE", state: "CORRELATING" });
 
     // Step 1: Ingest source/destination events through the real detector pipeline
-    setTimeout(() => {
+    setTimeout(async () => {
       dispatch({ type: "PROCESS_ATTACK_SCENARIO", scenarioId: selectedScenarioId });
       setExecuting(false);
+      try {
+        await fetch("/api/v1/rift/security-findings/simulate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ruleId:
+              scenario.anomalyType === "BENEFICIARY_MISMATCH"
+                ? "POL_UNUSUAL_SIGNER_BEHAVIOR"
+                : scenario.anomalyType === "AMOUNT_MISMATCH"
+                  ? "POL_VOLUME_SPIKE"
+                  : "POL_MISMATCHED_BRIDGE_LEG",
+            ruleName: `CSB-01 Exploit: ${scenario.name}`,
+            amount: 500_000,
+          }),
+        });
+      } catch {
+        // Fallback
+      }
     }, 600);
   };
 
