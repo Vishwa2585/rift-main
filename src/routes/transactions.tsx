@@ -140,14 +140,63 @@ function Transactions() {
 
               {/* RIFT KEY Prompt */}
               {tx.state === "PENDING_RIFT_KEY" && (
-                <div className="mt-4 rounded-xl border border-gold/40 bg-gold/10 p-3 text-xs">
-                  <p className="font-bold text-gold mb-1">Awaiting RIFT Key Hardware Tap</p>
-                  <p className="text-[11px] text-muted-foreground mb-2">Program physical NFC card or validate on Receiver Account.</p>
-                  <Link to="/rift-key">
-                    <button className="w-full rounded-lg bg-gold py-1.5 font-bold text-black text-xs hover:opacity-90">
-                      Open RIFT Key Device Lab
+                <div className="mt-4 rounded-xl border border-gold/40 bg-gold/10 p-3.5 text-xs space-y-2">
+                  <p className="font-bold text-gold">Awaiting RIFT Key Hardware Tap</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Program physical NFC card or tap simulated device credentials to finalize settlement.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                    <button
+                      onClick={() => {
+                        if (tx.keyChallenge) {
+                          dispatch({
+                            type: "VALIDATE_RIFT_KEY_CHALLENGE",
+                            txId: tx.id,
+                            nonce: tx.keyChallenge.nonce,
+                            digest: tx.keyChallenge.digest,
+                            cardSerial: "04:A2:8B:E3:44:01",
+                          });
+                        } else {
+                          dispatch({
+                            type: "RECEIVER_VALIDATE_NFC",
+                            txId: tx.id,
+                            payload: tx.riftKeyPayload || "RIFT-KEY:v2:AUTH",
+                            serial: "04:A2:8B:E3:44:01",
+                          });
+                        }
+                      }}
+                      className="flex-1 rounded-lg bg-gold py-2 font-bold text-black text-xs hover:opacity-90 transition-opacity"
+                    >
+                      Tap Simulated Key Now
                     </button>
-                  </Link>
+                    <Link to="/rift-key" className="flex-1">
+                      <button className="w-full rounded-lg border border-border bg-secondary/40 py-2 font-semibold text-foreground text-xs hover:bg-secondary">
+                        Device Lab →
+                      </button>
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* Settled Quick Actions */}
+              {tx.state === "SETTLED" && (
+                <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+                    <span className="size-2 rounded-full bg-emerald-400" />
+                    Settlement Finalized on {CHAINS.find((x) => x.id === tx.destChain)?.name || tx.destChain}
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Link to="/command-room" className="flex-1">
+                      <button className="w-full rounded-lg border border-border bg-secondary/40 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+                        Command Room
+                      </button>
+                    </Link>
+                    <Link to="/audit" className="flex-1">
+                      <button className="w-full rounded-lg border border-border bg-secondary/40 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+                        Audit Trail
+                      </button>
+                    </Link>
+                  </div>
                 </div>
               )}
             </>

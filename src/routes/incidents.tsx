@@ -391,7 +391,7 @@ function Incidents() {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-danger/20">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-danger">{r.ruleId}</span>
-                          <span className="semibold text-foreground text-sm">{r.ruleName}</span>
+                          <span className="font-semibold text-foreground text-sm">{r.ruleName}</span>
                         </div>
                         <span className="self-start sm:self-auto rounded bg-danger/20 px-2 py-0.5 font-mono text-xs font-bold text-danger">
                           +{r.riskContribution} PTS

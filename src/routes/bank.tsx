@@ -875,20 +875,80 @@ function Bank() {
                   })}
                 </ol>
 
-                {/* Receiver action notice */}
-                <div className="mt-6 rounded-2xl border border-gold/30 bg-gold/10 p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold text-gold">Receiver Settlement Portal</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Switch to the Demo Receiver account to tap the NFC card, claim escrow, or submit counterparty approval.
-                      </p>
+                {/* Receiver action notice or Settlement complete banner */}
+                {tx.state === "SETTLED" ? (
+                  <div className="mt-6 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 sm:p-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                          SETTLEMENT FINALIZED & CONFIRMED
+                        </span>
+                        <h4 className="font-display text-base font-bold text-foreground mt-0.5">
+                          Transfer {tx.id} Successfully Released
+                        </h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          All invariant rules verified valid. Funds credited to {recipient} on {tx.destChain}.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <GoldButton onClick={() => { setStep("clients"); setTxId(null); }} className="text-xs py-2 px-3.5">
+                          New Transfer
+                        </GoldButton>
+                        <GhostButton onClick={() => navigate({ to: "/transactions" })} className="text-xs py-2 px-3">
+                          View Ledger
+                        </GhostButton>
+                        <GhostButton onClick={() => navigate({ to: "/command-room" })} className="text-xs py-2 px-3">
+                          Command Room
+                        </GhostButton>
+                        <GhostButton onClick={() => navigate({ to: "/audit" })} className="text-xs py-2 px-3">
+                          Audit Trail
+                        </GhostButton>
+                      </div>
                     </div>
-                    <GoldButton onClick={() => setPortalTab("receiver")}>
-                      Open Receiver Account <ArrowRight className="size-3.5" />
-                    </GoldButton>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-6 rounded-2xl border border-gold/30 bg-gold/10 p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-gold">Receiver Settlement & NFC Authorization</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Validate transfer via physical RIFT Key NFC card, instant simulated tap, or on the Receiver portal.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <GoldButton
+                          onClick={() => {
+                            if (tx.keyChallenge) {
+                              dispatch({
+                                type: "VALIDATE_RIFT_KEY_CHALLENGE",
+                                txId: tx.id,
+                                nonce: tx.keyChallenge.nonce,
+                                digest: tx.keyChallenge.digest,
+                                cardSerial: "04:A2:8B:E3:44:01",
+                              });
+                            } else {
+                              dispatch({
+                                type: "RECEIVER_VALIDATE_NFC",
+                                txId: tx.id,
+                                payload: tx.riftKeyPayload || "RIFT-KEY:v2:AUTH",
+                                serial: "04:A2:8B:E3:44:01",
+                              });
+                            }
+                          }}
+                          className="text-xs py-2 px-3"
+                        >
+                          <ShieldCheck className="size-3.5 mr-1" /> Tap Simulated Key Now
+                        </GoldButton>
+                        <GhostButton onClick={() => setPortalTab("receiver")} className="text-xs py-2 px-3">
+                          Receiver Account →
+                        </GhostButton>
+                        <GhostButton onClick={() => navigate({ to: "/rift-key" })} className="text-xs py-2 px-3">
+                          RIFT Key Lab →
+                        </GhostButton>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-6 flex flex-wrap gap-3">
                   <GhostButton onClick={() => navigate({ to: "/command-room" })}>Open Command Room</GhostButton>
@@ -1037,9 +1097,17 @@ function Bank() {
                         {/* Action Buttons: Two-Party Consent / Claim / Tap NFC Card */}
                         <div>
                           {inbound.settled ? (
-                            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-400">
-                              <CheckCircle2 className="size-4" />
-                              Settled via RIFT Key Tag
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-400">
+                                <CheckCircle2 className="size-3.5" />
+                                Settled via RIFT Key
+                              </div>
+                              <GhostButton onClick={() => navigate({ to: "/transactions" })} className="text-xs py-1.5 px-3">
+                                View in Ledger
+                              </GhostButton>
+                              <GhostButton onClick={() => navigate({ to: "/audit" })} className="text-xs py-1.5 px-3">
+                                Audit
+                              </GhostButton>
                             </div>
                           ) : isAwaitingApproval ? (
                             <GoldButton
@@ -1078,14 +1146,26 @@ function Bank() {
 
                     {/* Verification receipt if just validated */}
                     {validationSuccessTxId === inbound.txId && (
-                      <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-300">
-                        <p className="font-bold flex items-center gap-1.5">
-                          <CheckCircle2 className="size-4 text-emerald-400" />
-                          Settlement Confirmed: +{fmtMoney(inbound.amount)} {inbound.asset} released to Apex Global Settlement Corp!
-                        </p>
-                        <p className="mt-0.5 text-[11px] text-emerald-400/80">
-                          Hardware signature matched. Non-replay verification rule R-08 passed.
-                        </p>
+                      <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3.5 text-xs text-emerald-300">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div>
+                            <p className="font-bold flex items-center gap-1.5">
+                              <CheckCircle2 className="size-4 text-emerald-400" />
+                              Settlement Confirmed: +{fmtMoney(inbound.amount)} {inbound.asset} released to Apex Global Settlement Corp!
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-emerald-400/80">
+                              Hardware signature matched. Non-replay verification rule R-08 passed.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <GoldButton onClick={() => navigate({ to: "/transactions" })} className="text-xs py-1.5 px-3">
+                              View in Ledger
+                            </GoldButton>
+                            <GhostButton onClick={() => { setPortalTab("sender"); setStep("clients"); }} className="text-xs py-1.5 px-3">
+                              New Transfer
+                            </GhostButton>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </GlassPanel>
