@@ -73,7 +73,7 @@ export interface CorrelatedPair {
   txId: string;
   sourceEvent?: NormalizedEvent | undefined;
   destEvent?: NormalizedEvent | undefined;
-  status: "matched" | "unmatched_destination" | "unmatched_source" | "correlating";
+  status: "matched" | "unmatched_destination" | "unmatched_source" | "correlating" | "pending_dest";
   timeDeltaMs?: number | undefined;
   evaluatedAt?: number | undefined;
 }
@@ -899,14 +899,15 @@ export function evaluateTransferPreflight(
   });
 
   // R-08: Cryptographic Key Attestation
-  const r8Passed = params.hasNfcKey !== false;
+  const r8Mandatory = params.amount >= 100_000_000;
+  const r8Passed = r8Mandatory ? params.hasNfcKey === true : true;
   checks.push({
     ruleId: "R-08",
     name: "Hardware Key Authorization",
     passed: r8Passed,
-    expected: "Fresh RIFT Key Cryptographic Nonce",
+    expected: r8Mandatory ? "Mandatory Physical RIFT Key Nonce" : "Valid Cryptographic Attestation",
     observed: params.hasNfcKey ? "Physical RIFT NFC Key Paired" : "Standard Multi-Sig Authorization",
-    detail: params.hasNfcKey ? "Fresh one-time cryptographic token generated for physical NFC card writing." : "Requires hardware key pairing for high-assurance transfers.",
+    detail: params.hasNfcKey ? "Fresh one-time cryptographic token generated for physical NFC card writing." : r8Passed ? "Standard authorization valid for standard transfer." : "Mandatory RIFT Key hardware authorization required for transfers exceeding 100M threshold.",
   });
 
   // R-09: Velocity & Concentration Check

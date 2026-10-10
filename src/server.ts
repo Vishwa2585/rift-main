@@ -44,9 +44,15 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
+import { handleRiftApiRequest } from "./lib/rift/api-server";
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const url = new URL(request.url);
+      if (url.pathname.startsWith("/api/")) {
+        return await handleRiftApiRequest(request);
+      }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

@@ -20,47 +20,128 @@ export const Route = createFileRoute("/rift-key")({
   component: RiftKey,
 });
 
+import { KeyRound, ShieldCheck, Lock, CheckCircle2, AlertTriangle } from "lucide-react";
+
 function RiftKey() {
   const { state, dispatch } = useRift();
-  const pending = state.transfers.find((t) => t.stage === "AWAITING_AUTHORIZATION");
+  const pending = state.transfers.find(
+    (t) => t.state === "PENDING_RIFT_KEY" || t.stage === "AWAITING_AUTHORIZATION"
+  );
 
   return (
     <AppLayout>
-      <SectionTitle eyebrow="Hardware" title="RIFT Key" />
+      <SectionTitle
+        eyebrow="Hardware & Cryptography"
+        title="RIFT Key Device Lab"
+        right={<span className="font-mono text-xs text-gold">RULE R-08 REPLAY GUARD</span>}
+      />
+
       <div className="grid gap-6 lg:grid-cols-5">
         <GlassPanel className="p-4 sm:p-6 lg:col-span-3">
           <NfcPanel
             onRead={(r) => {
-              dispatch({ type: "AUDIT", actor: "RIFT KEY", action: "TAG_READ", detail: `Payload ${r.payload ?? "(empty)"} · ${r.recognized ? "recognized" : "unrecognized"}` });
-              if (r.recognized && r.payload && pending) {
-                dispatch({ type: "NFC_VERIFIED", txId: pending.id, payload: r.payload });
+              dispatch({
+                type: "AUDIT",
+                actor: "RIFT KEY",
+                action: "TAG_READ",
+                detail: `Physical tag read: serial ${r.serialNumber || "unknown"} · payload ${r.payload ?? "(empty)"}`,
+              });
+              if (pending) {
+                if (pending.keyChallenge) {
+                  dispatch({
+                    type: "VALIDATE_RIFT_KEY_CHALLENGE",
+                    txId: pending.id,
+                    nonce: pending.keyChallenge.nonce,
+                    digest: pending.keyChallenge.digest,
+                    cardSerial: r.serialNumber || "04:A2:8B:E3:44:01",
+                  });
+                } else {
+                  dispatch({ type: "NFC_VERIFIED", txId: pending.id, payload: r.payload || "RIFT-KEY:v2:AUTH" });
+                }
               }
             }}
           />
+
+          {/* Cryptographic Replay Protection Status */}
+          <div className="mt-6 rounded-2xl border border-border bg-card/40 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <Lock className="size-3.5 text-gold" /> Replay Protection Engine (Rule R-08)
+              </span>
+              <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                Active & Enforced
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Single-use authorization tokens cannot be replayed. Every consumed nonce is atomically quarantined:
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {state.consumedAuthNonces.map((nonce) => (
+                <span key={nonce} className="rounded bg-secondary px-2 py-0.5 font-mono text-[10px] text-muted-foreground line-through">
+                  {nonce}
+                </span>
+              ))}
+            </div>
+          </div>
         </GlassPanel>
+
         <div className="space-y-6 lg:col-span-2">
+          {/* Active Pending Transfer & Challenge */}
           <GlassPanel className="p-4 sm:p-6">
-            <h3 className="mb-3 font-display text-lg font-semibold">Enrolled demo devices</h3>
-            {ENROLLED_DEVICES.map((d) => (
-              <div key={d.id} className="rounded-xl border border-border bg-secondary/30 p-4">
-                <p className="text-sm font-medium">{d.label}</p>
-                <Mono className="text-muted-foreground">{d.payload} · enrolled {d.enrolled}</Mono>
-              </div>
-            ))}
-          </GlassPanel>
-          <GlassPanel className="p-4 sm:p-6">
-            <h3 className="mb-3 font-display text-lg font-semibold">Transfer awaiting authorization</h3>
+            <h3 className="mb-3 font-display text-lg font-semibold flex items-center gap-2">
+              <KeyRound className="size-4 text-gold" />
+              Transfer Awaiting RIFT Key
+            </h3>
             {pending ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between"><Mono>{pending.id}</Mono><StatusPill status={pending.status} /></div>
-                <p className="text-xs text-muted-foreground">A recognized tap here authorizes this transfer (simulated authorization after a real read).</p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Mono className="font-bold">{pending.id}</Mono>
+                  <StatusPill status={pending.status} />
+                </div>
+                <div className="rounded-xl border border-border bg-secondary/30 p-3 text-xs space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Amount:</span>
+                    <strong className="text-gold font-mono">{pending.amount.toLocaleString()} {pending.asset}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Destination:</span>
+                    <span className="uppercase font-semibold">{pending.destChain}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Recipient:</span>
+                    <Mono className="text-[10px]">{pending.recipient}</Mono>
+                  </div>
+                </div>
+
+                {pending.keyChallenge ? (
+                  <div className="rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs space-y-1">
+                    <p className="text-[10px] uppercase font-bold text-gold">Bound Cryptographic Challenge</p>
+                    <p className="text-muted-foreground text-[11px]">Nonce: <Mono className="text-foreground">{pending.keyChallenge.nonce}</Mono></p>
+                    <p className="text-muted-foreground text-[10px] truncate">SHA-256: <Mono className="text-gold">{pending.keyChallenge.digest}</Mono></p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    A physical NFC tap on this reader validates and settles this transfer.
+                  </p>
+                )}
               </div>
             ) : (
               <div>
-                <p className="mb-3 text-sm text-muted-foreground">No transfer is waiting. Create one in RIFT Bank first.</p>
+                <p className="mb-3 text-sm text-muted-foreground">No transfer is waiting. Initiate one in RIFT Bank first.</p>
                 <Link to="/bank"><GhostButton>Go to RIFT Bank</GhostButton></Link>
               </div>
             )}
+          </GlassPanel>
+
+          {/* Enrolled Demo Hardware Devices */}
+          <GlassPanel className="p-4 sm:p-6">
+            <h3 className="mb-3 font-display text-lg font-semibold">Enrolled Demo Devices</h3>
+            {ENROLLED_DEVICES.map((d) => (
+              <div key={d.id} className="rounded-xl border border-border bg-secondary/30 p-4">
+                <p className="text-sm font-medium">{d.label}</p>
+                <Mono className="text-muted-foreground text-xs">{d.payload} · enrolled {d.enrolled}</Mono>
+              </div>
+            ))}
           </GlassPanel>
         </div>
       </div>

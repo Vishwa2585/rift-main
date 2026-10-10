@@ -82,33 +82,71 @@ function Transactions() {
             <p className="text-sm text-muted-foreground">Select a transfer to inspect its simulated details.</p>
           ) : (
             <>
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-display text-lg font-semibold">{tx.id}</h3>
-                <StatusPill status={tx.status} />
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                    tx.state === "SETTLED" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
+                    tx.state === "PENDING_PARTY_APPROVAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse" :
+                    tx.state === "REJECTED" ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" :
+                    tx.state === "EXPIRED" ? "bg-orange-500/20 text-orange-400 border border-orange-500/30" :
+                    tx.state === "PENDING_RIFT_KEY" ? "bg-gold/20 text-gold border border-gold/30" :
+                    "bg-secondary text-muted-foreground border border-border"
+                  )}>
+                    {tx.state || "PENDING"}
+                  </span>
+                  <StatusPill status={tx.status} />
+                </div>
               </div>
+
               <dl className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm min-w-0">
                 <dt className="text-muted-foreground">Client</dt><dd className="min-w-0 break-words">{CLIENTS.find((x) => x.id === tx.clientId)?.name}</dd>
                 <dt className="text-muted-foreground">Amount</dt><dd className="font-semibold text-gold min-w-0">{fmtMoney(tx.amount)} {tx.asset}</dd>
-                <dt className="text-muted-foreground">Stage</dt><dd className="min-w-0">{tx.stage.replaceAll("_", " ")}</dd>
                 <dt className="text-muted-foreground">Recipient</dt><dd className="min-w-0"><Mono className="break-all">{tx.recipient}</Mono></dd>
-                <dt className="text-muted-foreground">Source hash</dt><dd className="min-w-0"><Mono className="break-all">{tx.sourceHash.slice(0, 30)}… (simulated)</Mono></dd>
-                <dt className="text-muted-foreground">RIFT Key</dt><dd className="min-w-0">{tx.nfcVerified ? `Verified · ${tx.nfcPayload}` : "Not verified"}</dd>
-                <dt className="text-muted-foreground">Created</dt><dd className="min-w-0">{new Date(tx.createdAt).toLocaleString()}</dd>
+                <dt className="text-muted-foreground">Identity</dt>
+                <dd className="min-w-0 text-xs">
+                  <span className="font-semibold">{tx.recipientType || "REGISTERED"}</span>
+                  {tx.counterpartyId && <span className="text-gold font-mono ml-1.5">({tx.counterpartyId})</span>}
+                  {tx.claimToken && <span className="text-gold font-mono ml-1.5">(Token: {tx.claimToken})</span>}
+                </dd>
+                <dt className="text-muted-foreground">Chain Lock</dt><dd className="min-w-0"><Mono className="break-all">{tx.sourceHash.slice(0, 24)}…</Mono></dd>
+                <dt className="text-muted-foreground">Finality</dt><dd className="min-w-0 text-xs font-mono">{tx.confirmations ?? 32}/{tx.requiredConfirmations ?? 32} blocks (Block #{tx.sourceBlockNumber ?? 21044200})</dd>
+                <dt className="text-muted-foreground">RIFT Key</dt><dd className="min-w-0 text-xs">{tx.nfcVerified ? `Verified · ${tx.nfcPayload || "One-Time Signed"}` : tx.requiresNfc ? "Hardware Token Required" : "Standard Transfer"}</dd>
+                <dt className="text-muted-foreground">Created</dt><dd className="min-w-0 text-xs">{new Date(tx.createdAt).toLocaleString()}</dd>
               </dl>
-              {(tx.status === "pending" || tx.status === "flagged") && (
-                <div className="mt-5 flex gap-2">
-                  <GhostButton
-                    className="flex-1"
-                    onClick={() => { dispatch({ type: "SET_STATUS", txId: tx.id, status: "rejected" }); dispatch({ type: "AUDIT", actor: "OPERATOR", action: "TRANSFER_REJECTED", detail: tx.id }); }}
-                  >
-                    Reject
-                  </GhostButton>
-                  <GhostButton
-                    className="flex-1 border-success/40 text-success hover:bg-success/10"
-                    onClick={() => { dispatch({ type: "SET_STATUS", txId: tx.id, status: "completed" }); dispatch({ type: "SET_STAGE", txId: tx.id, stage: "FINAL_RESULT" }); dispatch({ type: "AUDIT", actor: "OPERATOR", action: "TRANSFER_APPROVED", detail: tx.id }); }}
-                  >
-                    Approve
-                  </GhostButton>
+
+              {/* Two-Party Approval Callout */}
+              {tx.twoPartyApproval && (
+                <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-300">Two-Party Consent Status</span>
+                    <span className="font-mono text-[10px] text-amber-200">
+                      S: {tx.twoPartyApproval.senderDecision} · R: {tx.twoPartyApproval.receiverDecision}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{tx.twoPartyApproval.reason}</p>
+                  {(tx.twoPartyApproval.senderDecision === "PENDING" || tx.twoPartyApproval.receiverDecision === "PENDING") && (
+                    <button
+                      onClick={() => dispatch({ type: "SET_ACTIVE_APPROVAL", txId: tx.id })}
+                      className="w-full rounded-lg bg-gold/20 border border-gold/40 py-1.5 font-bold text-gold hover:bg-gold/30 text-xs transition-colors"
+                    >
+                      Open Two-Party Consent Console
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* RIFT KEY Prompt */}
+              {tx.state === "PENDING_RIFT_KEY" && (
+                <div className="mt-4 rounded-xl border border-gold/40 bg-gold/10 p-3 text-xs">
+                  <p className="font-bold text-gold mb-1">Awaiting RIFT Key Hardware Tap</p>
+                  <p className="text-[11px] text-muted-foreground mb-2">Program physical NFC card or validate on Receiver Account.</p>
+                  <Link to="/rift-key">
+                    <button className="w-full rounded-lg bg-gold py-1.5 font-bold text-black text-xs hover:opacity-90">
+                      Open RIFT Key Device Lab
+                    </button>
+                  </Link>
                 </div>
               )}
             </>
