@@ -326,13 +326,19 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       return jsonResponse({ error: "Invalid JSON payload" }, 400);
     }
 
-    // Required fields validation
-    const { senderAccount, recipientAddress, amount, asset, sourceChain, destChain } = body;
-    if (!senderAccount || !recipientAddress || typeof amount !== "number" || !asset || !sourceChain || !destChain) {
+    // Required fields validation with schema compatibility
+    const senderAccount = body.senderAccount;
+    const recipientAddress = body.recipientAddress || body.recipient;
+    const amount = body.amount;
+    const asset = body.asset;
+    const sourceChain = body.sourceChain || "ethereum";
+    const destChain = body.destChain;
+
+    if (!senderAccount || !recipientAddress || typeof amount !== "number" || !asset || !destChain) {
       return jsonResponse(
         {
           error: "Validation failed",
-          message: "Missing required fields: senderAccount, recipientAddress, amount, asset, sourceChain, destChain",
+          message: "Missing required fields: senderAccount, recipient (or recipientAddress), amount, asset, destChain",
         },
         422,
       );
@@ -483,6 +489,7 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
 
     const responsePayload = {
       success: true,
+      transaction: newTx,
       riftTxId: newTx.id,
       bankOperationId: newTx.bankOperationId,
       state: newTx.state,
@@ -496,13 +503,7 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       requiresTwoPartyConsent: !!newTx.twoPartyApproval,
       twoPartyApproval: newTx.twoPartyApproval,
       requiresNfc: newTx.requiresNfc,
-      keyChallenge: newTx.keyChallenge
-        ? {
-            nonce: newTx.keyChallenge.nonce,
-            digestPrefix: newTx.keyChallenge.digest.slice(0, 16),
-            expiresAt: newTx.keyChallenge.expiresAt,
-          }
-        : undefined,
+      keyChallenge: newTx.keyChallenge,
       blockchain: {
         sourceHash: newTx.sourceHash,
         sourceBlockNumber: newTx.sourceBlockNumber,
@@ -646,11 +647,9 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
         tx.status = "authorized";
         tx.twoPartyApproval.settlementHeld = true;
       } else {
-        tx.state = "SETTLED";
-        tx.status = "completed";
+        tx.state = "READY_FOR_EXECUTION";
+        tx.status = "authorized";
         tx.twoPartyApproval.settlementHeld = false;
-        tx.confirmations = 32;
-        tx.receiptStatus = "SUCCESS";
       }
     }
 
@@ -658,6 +657,7 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
 
     return jsonResponse({
       success: true,
+      transaction: tx,
       txId: tx.id,
       state: tx.state,
       status: tx.status,
@@ -682,7 +682,8 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
       return jsonResponse({ error: "Invalid JSON payload" }, 400);
     }
 
-    const { action, nonce, digest, cardSerial } = body;
+    const action = body.action || (body.nonce ? "validate" : "generate");
+    const { nonce, digest, cardSerial } = body;
 
     if (action === "generate") {
       const newNonce = `NONCE-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -789,9 +790,11 @@ export async function handleRiftApiRequest(request: Request): Promise<Response> 
 
       return jsonResponse({
         success: true,
+        transaction: tx,
         action: "validated",
         txId: tx.id,
         nonce,
+        consumedNonce: nonce,
         cardSerial: cardSerial || "04:A2:8B:E3:44:01",
         state: tx.state,
         status: tx.status,

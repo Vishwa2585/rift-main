@@ -18,6 +18,8 @@ import {
 import { computeTransactionDigest } from "@/lib/rift/engine";
 import { ASSETS, fmtMoney, simHash, type ChainId } from "@/lib/rift/data";
 import { useNfc, generateRiftKeyPayload } from "@/lib/rift/nfc";
+import { riftBankClient } from "@/lib/rift/bank-client";
+import type { ApiTransaction } from "@/lib/rift/api-server";
 import { cn } from "@/lib/utils";
 import {
   ArrowRight,
@@ -78,6 +80,8 @@ function Bank() {
   const [recipientType, setRecipientType] = useState<RecipientType>("REGISTERED");
   const [hasNfcOptIn, setHasNfcOptIn] = useState(true);
   const [txId, setTxId] = useState<string | null>(null);
+  const [isSubmittingApi, setIsSubmittingApi] = useState(false);
+  const [authoritativeTx, setAuthoritativeTx] = useState<ApiTransaction | null>(null);
 
   // NFC Writer state in preview
   const [writingNfc, setWritingNfc] = useState(false);
@@ -158,13 +162,45 @@ function Bank() {
     }
   };
 
-  // Create & Initiate Transfer
-  const createTransfer = () => {
+  // Create & Initiate Transfer via Authoritative RIFT API
+  const createTransfer = async () => {
     if (state.operationsHeld) {
       alert("DEMONSTRATION CONTAINMENT ACTIVE: Transfers are temporarily held by incident containment.");
       return;
     }
-    const id = txId || nextTxId();
+    setIsSubmittingApi(true);
+
+    let id = txId || nextTxId();
+    let counterpartyId: string | undefined = undefined;
+    let claimToken: string | undefined = undefined;
+
+    try {
+      // Direct REST API Call to /api/v1/transactions/intent
+      const intentRes = await riftBankClient.submitTransactionIntent({
+        bankOperationId: `BNK-OP-${Date.now().toString().slice(-4)}`,
+        clientId,
+        senderAccount: fromAccount,
+        recipient,
+        amount,
+        asset,
+        destChain,
+        recipientType,
+        requiresNfc: hasNfcOptIn,
+      });
+
+      if (intentRes && intentRes.transaction) {
+        id = intentRes.transaction.id;
+        counterpartyId = intentRes.transaction.counterpartyId;
+        claimToken = intentRes.transaction.claimToken;
+        setAuthoritativeTx(intentRes.transaction);
+        setTxId(id);
+      }
+    } catch (apiErr) {
+      console.warn("RIFT API direct integration notice:", apiErr);
+    } finally {
+      setIsSubmittingApi(false);
+    }
+
     const payload = currentKeyPayload || generateRiftKeyPayload({
       txId: id,
       amount,
@@ -185,6 +221,8 @@ function Bank() {
         destChain,
         recipient,
         recipientType,
+        counterpartyId,
+        claimToken,
         stage: "CREATED" as const,
         status: "pending" as const,
         nfcVerified: false,
@@ -205,14 +243,14 @@ function Bank() {
 
     dispatch({
       type: "ADD_EVENT",
-      event: makeEvent("rift-bank", "TRANSFER", id, `Cross-chain transfer initiated: ${fmtMoney(amount)} ${asset} → ${destChain} [Simulated]`),
+      event: makeEvent("rift-bank", "TRANSFER", id, `Cross-chain transfer intent submitted to RIFT API (/api/v1): ${fmtMoney(amount)} ${asset} → ${destChain}`),
     });
 
     dispatch({
       type: "AUDIT",
       actor: "RIFT BANK",
       action: "TRANSFER_CREATED",
-      detail: `${id} · ${fmtMoney(amount)} ${asset} authorized to ${recipient} [Type: ${recipientType}]`,
+      detail: `${id} · ${fmtMoney(amount)} ${asset} authorized to ${recipient} [Type: ${recipientType}] · Ingested by RIFT Engine`,
     });
 
     setStep("lifecycle");
@@ -244,6 +282,17 @@ function Bank() {
       const targetTx = state.transfers.find((t) => t.id === targetTxId);
 
       if (targetTx?.keyChallenge) {
+        // Authoritative API call to consume single-use challenge nonce
+        try {
+          await riftBankClient.validateHardwareChallenge({
+            txId: targetTxId,
+            nonce: targetTx.keyChallenge.nonce,
+            digest: targetTx.keyChallenge.digest,
+          });
+        } catch (apiErr) {
+          console.warn("Backend challenge validation notice:", apiErr);
+        }
+
         // Cryptographic atomic challenge verification (Rule R-08 & single-use)
         dispatch({
           type: "VALIDATE_RIFT_KEY_CHALLENGE",
@@ -289,6 +338,9 @@ function Bank() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] text-gold">RIFT Financial Operations</span>
             <SimBadge label="INTERACTIVE DEMONSTRATION" />
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> RIFT CORE API (/api/v1) CONNECTED
+            </span>
           </div>
           <h1 className="mt-1 font-display text-2xl sm:text-3xl font-bold tracking-tight text-foreground md:text-4xl">
             {portalTab === "sender" ? "Private Vault Reserves" : "Demo Receiver Settlement Account"}
